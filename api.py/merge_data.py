@@ -46,7 +46,7 @@ try:
     print("\n따릉이 데이터와 날씨 데이터를 병합합니다...")
     bike_df = pd.read_csv('tpss_hourly_demand.csv')
     
-    # '시간_시'를 기준으로 병합 (Left Join)
+    # 시간_시를 기준으로 병합 (Left Join)
     merged_df = pd.merge(bike_df, weather_df, on='시간_시', how='left')
     
     # 혹시 모를 결측치를 0으로 채우기

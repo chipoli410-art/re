@@ -12,7 +12,7 @@ print("대여소 위치 데이터를 변환 중입니다...")
 le = LabelEncoder()
 df['대여소_코드'] = le.fit_transform(df['시작_대여소_ID'])
 
-# 2. X값에 '대여소_코드' 추가!
+# 2. X값에 대여소_코드 추가
 X = df[['대여소_코드', '시간_시', '기온', '강수량', '풍속', '습도']]
 y = df['전체_건수']
 
@@ -30,7 +30,7 @@ rf_mse = mean_squared_error(y_test, rf_predictions)
 rf_rmse = np.sqrt(rf_mse)
 rf_r2 = r2_score(y_test, rf_predictions)
 
-print("\n--- 🌟 위치 데이터가 추가된 랜덤 포레스트 성능 ---")
+print("\n--- 위치 데이터가 추가된 랜덤 포레스트 성능 ---")
 print(f"MSE  : {rf_mse:.2f}")
 print(f"RMSE : {rf_rmse:.2f}")
 print(f"R²   : {rf_r2:.4f}")
