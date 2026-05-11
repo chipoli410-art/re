@@ -1,4 +1,4 @@
-깃허브(GitHub) README 또는 포트폴리오용
+깃허브(GitHub) README 또는 포트폴리오용.
 
 🚲 따릉이 수요 예측 및 운영 최적화 프로그램 (Ttareungi Demand Forecaster)
 
