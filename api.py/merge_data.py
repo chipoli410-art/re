@@ -1,8 +1,8 @@
 import requests
 import pandas as pd
 import json
-
-# 1. API 키 설정 (발급받은 일반 인증키(Encoding)를 여기에 따옴표 안에 넣으세요)
+#feat(data): 시간별 수요 데이터와 기상청 날씨 데이터 병합 로직 작성
+# 1. API 키 설정 
 API_KEY = '6cdfb8721d44bfefa545d6a41a7e6f56c02b78423aa8dcf8fd54c80d072fe552'
 
 # 2. 기상청 날씨 데이터 수집
