@@ -1,25 +1,52 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import requests
+
+def get_nearby_school_count(lat, lng, api_key):
+    if not api_key:
+        return 0
+    url = "https://dapi.kakao.com/v2/local/search/category.json"
+    headers = {"Authorization": f"KakaoAK {api_key}"}
+    params = {"category_group_code": "SC4", "y": lat, "x": lng, "radius": 1000}
+    
+    try:
+        response = requests.get(url, headers=headers, params=params)
+        if response.status_code == 200:
+            return response.json()['meta']['total_count']
+        else:
+            return 0
+    except:
+        return 0
 
 st.set_page_config(page_title="따릉이 수요 예측 대시보드", layout="wide")
-st.title("🚲 따릉이 수요 예측 및 혼잡도 대시보드")
+st.title("🚲 따릉이 수요 예측 (실시간 카카오 API 연동)")
+
+st.sidebar.header("API 설정")
+kakao_api_key = st.sidebar.text_input("카카오 REST API 키", type="password")
 
 st.sidebar.header("환경 변수 설정")
-location = st.sidebar.selectbox("현재 위치 (서울)", ["강남역 (강남구)", "여의도역 (영등포구)", "홍대입구역 (마포구)", "서울숲 (성동구)", "노원역 (노원구)"])
+
+location_coords = {
+    "강남역 (강남구)": (37.4979, 127.0276),
+    "여의도역 (영등포구)": (37.5215, 126.9246),
+    "홍대입구역 (마포구)": (37.5568, 126.9245),
+    "서울숲 (성동구)": (37.5443, 127.0440),
+    "노원역 (노원구)": (37.6542, 127.0568)
+}
+
+location = st.sidebar.selectbox("현재 위치", list(location_coords.keys()))
 current_hour = st.sidebar.slider("시간", 0, 23, 12)
 temperature = st.sidebar.slider("기온 (℃)", -10, 35, 20)
 
-location_data = {
-    "강남역 (강남구)": {"school": 2, "base": 50},
-    "여의도역 (영등포구)": {"school": 1, "base": 40},
-    "홍대입구역 (마포구)": {"school": 4, "base": 45},
-    "서울숲 (성동구)": {"school": 1, "base": 30},
-    "노원역 (노원구)": {"school": 5, "base": 35}
-}
+lat, lng = location_coords[location]
 
-school_count = location_data[location]["school"]
-base_demand = location_data[location]["base"] + (school_count * 5)
+if kakao_api_key:
+    school_count = get_nearby_school_count(lat, lng, kakao_api_key)
+else:
+    school_count = 0
+
+base_demand = 30 + (school_count * 5)
 
 if current_hour in [8, 9, 18, 19]:
     base_demand *= 2.5
@@ -33,7 +60,7 @@ elif 15 <= temperature <= 25:
 
 predicted_demand = int(base_demand)
 
-st.subheader(f"📍 선택 지역: {location} (내부 데이터 - 학교 수: {school_count}개)")
+st.subheader(f"📍 {location} (API 실시간 수집 - 반경 1km 학교 수: {school_count}개)")
 st.subheader(f"예상 대여 수요량: {predicted_demand}대")
 
 if predicted_demand > 80:
@@ -44,21 +71,11 @@ else:
     st.success("🟢 널널 (여유 있음)")
 
 st.markdown("---")
-st.subheader("🚴 라이딩 날씨 지수")
-
-if 15 <= temperature <= 25:
-    st.info("쾌적함: 자전거 타기 완벽한 날씨!")
-elif 5 <= temperature <= 14 or 26 <= temperature <= 29:
-    st.warning("보통: 가벼운 겉옷이나 물을 챙기세요.")
-else:
-    st.error("주의: 야외 활동에 주의가 필요한 날씨입니다.")
-
-st.markdown("---")
 st.subheader("📅 내일 혼잡 시간대 예측")
 st.write(f"내일은 {location}의 특성을 반영하여 오전 8~9시, 오후 6~7시에 대여소가 매우 혼잡할 것으로 예상됩니다.")
 
 hours = np.arange(24)
-demands = np.random.randint(10, 30, size=24) + base_demand * 0.2
+demands = np.random.randint(10, 30, size=24) + (base_demand * 0.2)
 demands[8:10] += 40
 demands[18:20] += 50
 
