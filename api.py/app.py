@@ -23,7 +23,7 @@ st.set_page_config(page_title="따릉이 수요 예측 대시보드", layout="wi
 st.title("🚲 따릉이 수요 예측 (실시간 카카오 API 연동)")
 
 st.sidebar.header("API 설정")
-kakao_api_key = st.sidebar.text_input("카카오 REST API 키", type="password")
+kakao_api_key = st.sidebar.text_input("9f7b0fa620b4a25d3ce0eb7dc1291afb", type="password")
 
 st.sidebar.header("환경 변수 설정")
 
