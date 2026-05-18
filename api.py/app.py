@@ -9,7 +9,7 @@ def get_nearby_poi_count(lat, lng, api_key, category_code):
     
     url = "https://dapi.kakao.com/v2/local/search/category.json"
     headers = {"Authorization": f"KakaoAK {api_key}"}
-    params = {"category_group_code": category_code, "y": lat, "x": lng, "radius": 5000}
+    params = {"category_group_code": category_code, "y": lat, "x": lng, "radius": 1000}
     
     try:
         response = requests.get(url, headers=headers, params=params)
@@ -24,7 +24,7 @@ st.set_page_config(page_title="따릉이 수요 예측 대시보드", layout="wi
 st.title("🚲 따릉이 다차원 수요 예측 대시보드")
 
 st.sidebar.header("🔑 API 설정")
-kakao_api_key = st.sidebar.text_input("카카오 REST API 키", value="09611d17ff9500ed2d94a6d607cf3609", type="password")
+kakao_api_key = "09611d17ff9500ed2d94a6d607cf3609"
 
 st.sidebar.header("🌍 시뮬레이션 환경 설정")
 
@@ -69,7 +69,7 @@ predicted_demand = int(base_demand)
 
 col1, col2 = st.columns(2)
 with col1:
-    st.subheader(f"📍 {location.split()[0]} 인프라 (반경 5km)")
+    st.subheader(f"📍 {location.split()[0]} 인프라 (반경 1km)")
     if kakao_api_key and school_status != "성공":
         st.error(f"⚠️ API 연동 실패: {school_status}") 
     
