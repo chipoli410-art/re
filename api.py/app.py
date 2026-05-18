@@ -72,7 +72,7 @@ else:
 
 st.markdown("---")
 st.subheader("📅 내일 혼잡 시간대 예측")
-st.write(f"내일은 {location}의 특성을 반영하여 오전 8~9시, 오후 6~7시에 대여소가 매우 혼잡할 것으로 예상됩니다.")
+st.write(f"내일은 {location}의 특성을 반영하여 오전 8\~9시, 오후 6\~7시에 대여소가 매우 혼잡할 것으로 예상됩니다.")
 
 hours = np.arange(24)
 demands = np.random.randint(10, 30, size=24) + (base_demand * 0.2)
