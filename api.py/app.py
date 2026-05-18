@@ -24,16 +24,26 @@ st.set_page_config(page_title="따릉이 수요 예측 대시보드", layout="wi
 st.title("🚲 따릉이 다차원 수요 예측 대시보드")
 
 st.sidebar.header("🔑 API 설정")
+# 강제 고정된 API 키
 kakao_api_key = "09611d17ff9500ed2d94a6d607cf3609"
 
 st.sidebar.header("🌍 시뮬레이션 환경 설정")
 
+# 서울 주요 지하철역 대거 추가!
 location_coords = {
     "강남역 (오피스/환승)": {"coords": (37.4979, 127.0276), "base": 60},
     "여의도역 (오피스/공원)": {"coords": (37.5215, 126.9246), "base": 55},
     "홍대입구역 (대학가/유흥)": {"coords": (37.5568, 126.9245), "base": 65},
-    "서울숲 (여가/공원)": {"coords": (37.5443, 127.0440), "base": 45},
-    "노원역 (주거/학원가)": {"coords": (37.6542, 127.0568), "base": 50}
+    "서울숲역 (여가/공원)": {"coords": (37.5443, 127.0440), "base": 45},
+    "노원역 (주거/학원가)": {"coords": (37.6542, 127.0568), "base": 50},
+    "잠실역 (쇼핑/테마파크)": {"coords": (37.5133, 127.1001), "base": 65},
+    "신도림역 (대형 환승거점)": {"coords": (37.5088, 126.8912), "base": 55},
+    "혜화역 (대학로/문화)": {"coords": (37.5823, 127.0019), "base": 50},
+    "왕십리역 (다중 환승/대학가)": {"coords": (37.5611, 127.0385), "base": 50},
+    "용산역 (KTX/쇼핑)": {"coords": (37.5299, 126.9646), "base": 55},
+    "사당역 (경기 남부 환승)": {"coords": (37.4765, 126.9816), "base": 60},
+    "건대입구역 (대학가/유흥)": {"coords": (37.5404, 127.0692), "base": 60},
+    "신촌역 (대학가)": {"coords": (37.5552, 126.9368), "base": 55}
 }
 
 location = st.sidebar.selectbox("📍 지역 선택", list(location_coords.keys()))
@@ -44,9 +54,11 @@ current_hour = st.sidebar.slider("⏰ 시간대", 0, 23, 18)
 lat, lng = location_coords[location]["coords"]
 loc_base_demand = location_coords[location]["base"]
 
+# 반경 1km(1000m) 내의 학교와 지하철역 개수 실시간 검색
 school_count, school_status = get_nearby_poi_count(lat, lng, kakao_api_key, "SC4")
 subway_count, subway_status = get_nearby_poi_count(lat, lng, kakao_api_key, "SW8")
 
+# 모델 기본 수요 계산 로직
 base_demand = loc_base_demand + (school_count * 2) + (subway_count * 4) 
 
 if "평일" in day_type:
@@ -67,6 +79,7 @@ elif weather_condition == "미세먼지 나쁨":
 
 predicted_demand = int(base_demand)
 
+# 화면 출력
 col1, col2 = st.columns(2)
 with col1:
     st.subheader(f"📍 {location.split()[0]} 인프라 (반경 1km)")
@@ -74,7 +87,7 @@ with col1:
         st.error(f"⚠️ API 연동 실패: {school_status}") 
     
     st.write(f"- 🎓 검색된 학교 수: **{school_count}개**")
-    st.write(f"- 🚇 검색된 지하철역: **{subway_count}개**")
+    st.write(f"- 🚇 검색된 지하철/전철역: **{subway_count}개**")
 
 with col2:
     st.subheader("📊 실시간 예측 결과")
