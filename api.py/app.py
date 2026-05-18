@@ -63,7 +63,7 @@ def get_weather_by_date(lat, lng, date_str):
 st.set_page_config(page_title="따릉이 빅데이터 대시보드", layout="wide")
 st.title("🚲 따릉이 다차원 분석 및 수요 예측 시스템")
 
-kakao_api_key = "09611d17ff9500ed2d94a6d607cf3609"
+kakao_api_key = "본인의 api 키를 넣어주세요"
 
 location_coords = {
     "강남역 (오피스/환승)": {"coords": (37.4979, 127.0276), "base": 60},
