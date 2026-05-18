@@ -4,11 +4,12 @@ import numpy as np
 import requests
 import folium
 from streamlit_folium import st_folium
+from datetime import datetime
 
 # --------------------------------------------------------
-# 1. 외부 API 통신 함수 정의 (카카오, OSM, 날씨)
+# 1. 외부 API 통신 함수 정의
 # --------------------------------------------------------
-# 카카오 로컬 API: 특정 좌표 반경 내 장소(학교, 지하철) 데이터 수집
+# 카카오 로컬 API를 통해 대여소 반경 1km 내 인프라(학교, 지하철역) 데이터를 가져오는 함수이다.
 def get_nearby_poi_data(lat, lng, api_key, category_code):
     if not api_key:
         return [], "키 미입력"
@@ -23,53 +24,39 @@ def get_nearby_poi_data(lat, lng, api_key, category_code):
     except Exception as e:
         return [], f"요청 실패: {str(e)}"
 
-# OpenStreetMap API: 실제 도로망 좌표 수집 (1시간 캐싱)
-@st.cache_data(ttl=3600)
-def get_real_roads(lat, lng):
-    overpass_url = "http://overpass-api.de/api/interpreter"
-    overpass_query = f"""
-    [out:json];
-    way(around:800, {lat}, {lng})["highway"~"primary|secondary|tertiary"];
-    out geom;
-    """
-    try:
-        response = requests.get(overpass_url, params={'data': overpass_query}, timeout=5)
-        data = response.json()
-        roads = []
-        for element in data.get('elements', []):
-            if 'geometry' in element:
-                roads.append([[node['lat'], node['lon']] for node in element['geometry']])
-        return roads
-    except:
-        return []
-
-# 🌟 [NEW] Open-Meteo API: 실시간 날씨 및 미세먼지 데이터 자동 수집 (10분 캐싱)
+# 🌟 [수정] Open-Meteo API: 사용자가 선택한 특정 날짜의 날씨 및 미세먼지 예보를 자동 조회하는 함수이다.
 @st.cache_data(ttl=600)
-def get_realtime_weather(lat, lng):
+def get_weather_by_date(lat, lng, date_str):
     try:
-        # 기온 및 날씨 코드 호출
-        weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lng}&current=temperature_2m,weather_code"
+        # 기상청 날씨 예보 API를 호출하여 해당 날짜의 날씨 코드와 최고 기온을 가져온다.
+        weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lng}&start_date={date_str}&end_date={date_str}&daily=weather_code,temperature_2m_max&timezone=Asia/Seoul"
         w_res = requests.get(weather_url).json()
-        code = w_res['current']['weather_code']
-        temp = w_res['current']['temperature_2m']
         
-        # 미세먼지(PM10) 데이터 호출
-        aqi_url = f"https://air-quality-api.open-meteo.com/v1/air-quality?latitude={lat}&longitude={lng}&current=pm10"
+        if 'daily' in w_res and w_res['daily']['weather_code']:
+            code = w_res['daily']['weather_code'][0]
+            temp = w_res['daily']['temperature_2m_max'][0]
+        else:
+            return "맑음", 20.0, 30.0, "예보 범위 외 날짜(기본값 적용)"
+        
+        # 대기질 API를 호출하여 해당 날짜의 최대 미세먼지(PM10) 수치를 가져온다.
+        aqi_url = f"https://air-quality-api.open-meteo.com/v1/air-quality?latitude={lat}&longitude={lng}&start_date={date_str}&end_date={date_str}&daily=pm10_max&timezone=Asia/Seoul"
         a_res = requests.get(aqi_url).json()
-        pm10 = a_res['current']['pm10']
         
-        # WMO 날씨 코드를 대시보드 기준에 맞게 텍스트로 변환한다.
-        # 50 이상 코드는 대부분 비, 눈, 우박 등을 의미한다.
+        pm10 = 30.0
+        if 'daily' in a_res and a_res['daily']['pm10_max'] and a_res['daily']['pm10_max'][0] is not None:
+            pm10 = a_res['daily']['pm10_max'][0]
+        
+        # WMO 기상 코드 기준 50 이상은 강수(비/눈) 상태로 판별한다.
         if code >= 50:
             condition = "비/눈"
-        elif pm10 > 80: # PM10 수치가 80을 초과하면 미세먼지 나쁨으로 판별한다.
+        elif pm10 > 80:
             condition = "미세먼지 나쁨"
         else:
             condition = "맑음"
             
         return condition, temp, pm10, "성공"
-    except Exception as e:
-        return "맑음", 20.0, 30.0, "API 지연"
+    except:
+        return "맑음", 20.0, 30.0, "날씨 API 조회 실패(기본값 적용)"
 
 
 # --------------------------------------------------------
@@ -81,7 +68,7 @@ kakao_api_key = "09611d17ff9500ed2d94a6d607cf3609"
 
 
 # --------------------------------------------------------
-# 3. 사이드바 (사용자 입력 환경 설정)
+# 3. 사이드바 (사용자 입력 및 자동 데이터 연산)
 # --------------------------------------------------------
 st.sidebar.header("🌍 환경 설정 (위치 및 시간)")
 location_coords = {
@@ -101,22 +88,34 @@ location_coords = {
 }
 
 location = st.sidebar.selectbox("📍 지역 선택", list(location_coords.keys()))
-day_type = st.sidebar.radio("📅 요일 유형", ["평일 (출퇴근 위주)", "주말/공휴일 (여가 위주)"])
+
+# 🌟 [NEW] 날짜 선택 컴포넌트 추가
+selected_date = st.sidebar.date_input("📅 날짜 선택", datetime.now().date())
 current_hour = st.sidebar.slider("⏰ 시간대", 0, 23, 18)
+
+# 🌟 [NEW] 선택된 날짜의 요일을 분석하여 평일과 주말을 자동으로 구분한다.
+# weekday() 결과가 5(토요일), 6(일요일)이면 주말이며 나머지는 평일이다.
+if selected_date.weekday() >= 5:
+    day_type = "주말/공휴일 (여가 위주)"
+else:
+    day_type = "평일 (출퇴근 위주)"
+
+st.sidebar.text(f"분석 유형: {day_type}")
 
 lat, lng = location_coords[location]["coords"]
 loc_base_demand = location_coords[location]["base"]
 
-# 🌟 [NEW] 사이드바: 날씨 모드 선택 토글
+# 🌟 [수정] 기상 설정 섹션: 선택된 날짜 데이터를 날씨 API 연동에 매개변수로 전달한다.
 st.sidebar.markdown("---")
 st.sidebar.header("🌤️ 기상 설정")
-weather_mode = st.sidebar.radio("날씨 연동 모드", ["실시간 날씨 자동 연동 🟢", "수동 시뮬레이션 설정 🔴"])
+weather_mode = st.sidebar.radio("날씨 연동 모드", ["선택 날짜 날씨 자동 연동 🟢", "수동 시뮬레이션 설정 🔴"])
 
-# 선택한 모드에 따라 날씨 변수를 다르게 할당한다.
-if "실시간" in weather_mode:
-    auto_condition, current_temp, current_pm10, w_status = get_realtime_weather(lat, lng)
+date_str = selected_date.strftime("%Y-%m-%d")
+
+if "선택 날짜" in weather_mode:
+    auto_condition, current_temp, current_pm10, w_status = get_weather_by_date(lat, lng, date_str)
     weather_condition = auto_condition
-    st.sidebar.success(f"현재 기온: {current_temp}°C\n\n미세먼지(PM10): {current_pm10}µg/m³\n\n상태: {weather_condition}")
+    st.sidebar.success(f"예보 기온: {current_temp}°C\n\n미세먼지: {current_pm10}µg/m³\n\n상태: {weather_condition}\n\n({w_status})")
 else:
     weather_condition = st.sidebar.selectbox("수동 기상 상태 선택", ["맑음", "비/눈", "미세먼지 나쁨"])
 
@@ -135,7 +134,6 @@ else:
 schools, _ = get_nearby_poi_data(lat, lng, kakao_api_key, "SC4")
 subways, _ = get_nearby_poi_data(lat, lng, kakao_api_key, "SW8")
 school_count, subway_count = len(schools), len(subways)
-real_roads = get_real_roads(lat, lng)
 
 
 # --------------------------------------------------------
@@ -146,7 +144,7 @@ if traffic_condition == "정체 (빨강)":
 elif traffic_condition == "서행 (노랑)":
     st.warning(f"⚠️ **[교통 서행]** {current_hour}시 주변 도로에 차량이 많습니다.")
 
-st.subheader(f"🗺️ {location.split()[0]} 주변 실제 도로망 및 교통 상황 (반경 1km)")
+st.subheader(f"🗺️ {location.split()[0]} 주변 인프라 및 교통 상황 (반경 1km)")
 
 m = folium.Map(location=[lat, lng], zoom_start=15)
 folium.Marker([lat, lng], popup="선택한 대여소", icon=folium.Icon(color='black', icon='info-sign')).add_to(m)
@@ -160,19 +158,13 @@ folium.Circle(
     color=t_color,
     fill=True,
     fill_color=t_color,
-    fill_opacity=0.05, # 영역 투명도 유지
+    fill_opacity=0.2,
 ).add_to(m)
 
 for s in schools:
     folium.Marker(location=[float(s['y']), float(s['x'])], popup=s['place_name'], icon=folium.Icon(color='orange', icon='graduation-cap', prefix='fa')).add_to(m)
 for sw in subways:
     folium.Marker(location=[float(sw['y']), float(sw['x'])], popup=sw['place_name'], icon=folium.Icon(color='blue', icon='subway', prefix='fa')).add_to(m)
-
-if real_roads:
-    for road_coords in real_roads:
-        folium.PolyLine(road_coords, color=t_color, weight=5, opacity=0.8, tooltip=f"예상 도로 상황: {traffic_condition}").add_to(m)
-else:
-    st.info("현재 도로 형태 데이터를 불러오고 있습니다. 지도를 확대/축소해 보세요.")
 
 st_folium(m, width=1100, height=400)
 st.markdown("---")
@@ -189,11 +181,10 @@ else:
     if 14 <= current_hour <= 18: base_demand *= 1.8 
     elif current_hour < 8: base_demand *= 0.3
 
-# 날씨 상황에 따른 패널티를 적용한다.
 if weather_condition == "비/눈": base_demand *= 0.15 
 elif weather_condition == "미세먼지 나쁨": base_demand *= 0.7 
-
 if traffic_condition == "정체 (빨강)": base_demand *= 1.15 
+
 predicted_demand = int(base_demand)
 
 
@@ -213,15 +204,14 @@ with col1:
 
 with col2:
     st.subheader("🔍 수집된 실시간 데이터 요약")
-    st.write(f"- 인근 학교: **{school_count}개** (카카오 로컬 API)")
-    st.write(f"- 인근 지하철역: **{subway_count}개** (카카오 로컬 API)")
-    st.write(f"- 도로망 시각화: **OpenStreetMap API**")
+    st.write(f"- 조회 기준 날짜: **{date_str}**")
+    st.write(f"- 인근 학교: **{school_count}개** (카카오 API)")
+    st.write(f"- 인근 지하철역: **{subway_count}개** (카카오 API)")
     
-    # 날씨 모드에 따른 출력 텍스트를 다르게 표시한다.
-    if "실시간" in weather_mode:
-        st.write(f"- 기상 상태: **{weather_condition} ({current_temp}°C, Open-Meteo API)**")
+    if "선택 날짜" in weather_mode:
+        st.write(f"- 기상 상태: **{weather_condition} ({current_temp}°C, Open-Meteo 예보 데이터 반영)**")
     else:
-        st.write(f"- 기상 상태: **{weather_condition} (수동 시뮬레이션)**")
+        st.write(f"- 기상 상태: **{weather_condition} (수동 시뮬레이션 설정값 반영)**")
 
 st.markdown("---")
 
