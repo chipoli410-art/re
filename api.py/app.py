@@ -5,6 +5,7 @@ import requests
 import folium
 from streamlit_folium import st_folium
 from datetime import datetime
+import random
 
 # --------------------------------------------------------
 # 1. 외부 API 통신 함수 정의
