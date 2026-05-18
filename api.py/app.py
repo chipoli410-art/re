@@ -2,34 +2,35 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import requests
+import folium
+from streamlit_folium import st_folium
 
-def get_nearby_poi_count(lat, lng, api_key, category_code):
+# API에서 장소 리스트(이름, 좌표)를 가져오는 함수로 업그레이드
+def get_nearby_poi_data(lat, lng, api_key, category_code):
     if not api_key:
-        return 0, "키 미입력"
+        return [], "키 미입력"
     
     url = "https://dapi.kakao.com/v2/local/search/category.json"
     headers = {"Authorization": f"KakaoAK {api_key}"}
-    params = {"category_group_code": category_code, "y": lat, "x": lng, "radius": 1000}
+    params = {"category_group_code": category_code, "y": lat, "x": lng, "radius": 1000, "size": 15}
     
     try:
         response = requests.get(url, headers=headers, params=params)
         if response.status_code == 200:
-            return response.json()['meta']['total_count'], "성공"
+            return response.json()['documents'], "성공"
         else:
-            return 0, f"에러코드 {response.status_code}"
+            return [], f"에러코드 {response.status_code}"
     except Exception as e:
-        return 0, f"요청 실패: {str(e)}"
+        return [], f"요청 실패: {str(e)}"
 
 st.set_page_config(page_title="따릉이 수요 예측 대시보드", layout="wide")
-st.title("🚲 따릉이 다차원 수요 예측 대시보드")
+st.title("🚲 따릉이 실시간 인프라 분석 & 수요 예측")
 
-st.sidebar.header("🔑 API 설정")
-# 강제 고정된 API 키
+# API 설정
 kakao_api_key = "09611d17ff9500ed2d94a6d607cf3609"
 
+# 사이드바 설정
 st.sidebar.header("🌍 시뮬레이션 환경 설정")
-
-# 서울 주요 지하철역 대거 추가!
 location_coords = {
     "강남역 (오피스/환승)": {"coords": (37.4979, 127.0276), "base": 60},
     "여의도역 (오피스/공원)": {"coords": (37.5215, 126.9246), "base": 55},
@@ -37,13 +38,7 @@ location_coords = {
     "서울숲역 (여가/공원)": {"coords": (37.5443, 127.0440), "base": 45},
     "노원역 (주거/학원가)": {"coords": (37.6542, 127.0568), "base": 50},
     "잠실역 (쇼핑/테마파크)": {"coords": (37.5133, 127.1001), "base": 65},
-    "신도림역 (대형 환승거점)": {"coords": (37.5088, 126.8912), "base": 55},
-    "혜화역 (대학로/문화)": {"coords": (37.5823, 127.0019), "base": 50},
-    "왕십리역 (다중 환승/대학가)": {"coords": (37.5611, 127.0385), "base": 50},
-    "용산역 (KTX/쇼핑)": {"coords": (37.5299, 126.9646), "base": 55},
-    "사당역 (경기 남부 환승)": {"coords": (37.4765, 126.9816), "base": 60},
-    "건대입구역 (대학가/유흥)": {"coords": (37.5404, 127.0692), "base": 60},
-    "신촌역 (대학가)": {"coords": (37.5552, 126.9368), "base": 55}
+    "건대입구역 (대학가/유흥)": {"coords": (37.5404, 127.0692), "base": 60}
 }
 
 location = st.sidebar.selectbox("📍 지역 선택", list(location_coords.keys()))
@@ -54,42 +49,63 @@ current_hour = st.sidebar.slider("⏰ 시간대", 0, 23, 18)
 lat, lng = location_coords[location]["coords"]
 loc_base_demand = location_coords[location]["base"]
 
-# 반경 1km(1000m) 내의 학교와 지하철역 개수 실시간 검색
-school_count, school_status = get_nearby_poi_count(lat, lng, kakao_api_key, "SC4")
-subway_count, subway_status = get_nearby_poi_count(lat, lng, kakao_api_key, "SW8")
+# 실시간 데이터 수집 (학교 SC4, 지하철 SW8)
+schools, s_status = get_nearby_poi_data(lat, lng, kakao_api_key, "SC4")
+subways, sw_status = get_nearby_poi_data(lat, lng, kakao_api_key, "SW8")
 
-# 모델 기본 수요 계산 로직
+school_count = len(schools)
+subway_count = len(subways)
+
+# --- 상단: 실시간 지도 시각화 ---
+st.subheader(f"🗺️ {location.split()[0]} 주변 인프라 분석 (반경 1km)")
+
+# Folium 지도 생성
+m = folium.Map(location=[lat, lng], zoom_start=15)
+
+# 중심점 마커
+folium.Marker([lat, lng], popup="선택한 대여소", icon=folium.Icon(color='black', icon='info-sign')).add_to(m)
+
+# 검색 반경 1km 원 그리기
+folium.Circle([lat, lng], radius=1000, color='blue', fill=True, fill_opacity=0.1).add_to(m)
+
+# 학교 마커 찍기
+for s in schools:
+    folium.Marker(
+        location=[float(s['y']), float(s['x'])],
+        popup=s['place_name'],
+        icon=folium.Icon(color='orange', icon='graduation-cap', prefix='fa')
+    ).add_to(m)
+
+# 지하철 마커 찍기
+for sw in subways:
+    folium.Marker(
+        location=[float(sw['y']), float(sw['x'])],
+        popup=sw['place_name'],
+        icon=folium.Icon(color='blue', icon='subway', prefix='fa')
+    ).add_to(m)
+
+# 지도 출력
+st_folium(m, width=1100, height=400)
+
+st.markdown("---")
+
+# --- 하단: 예측 결과 및 차트 ---
+col1, col2 = st.columns(2)
+
+# 수요 예측 계산 로직
 base_demand = loc_base_demand + (school_count * 2) + (subway_count * 4) 
-
 if "평일" in day_type:
-    if current_hour in [8, 9, 18, 19]:
-        base_demand *= 2.2 
-    elif current_hour < 6:
-        base_demand *= 0.2
+    if current_hour in [8, 9, 18, 19]: base_demand *= 2.2 
+    elif current_hour < 6: base_demand *= 0.2
 else:
-    if 14 <= current_hour <= 18:
-        base_demand *= 1.8 
-    elif current_hour < 8:
-        base_demand *= 0.3
+    if 14 <= current_hour <= 18: base_demand *= 1.8 
+    elif current_hour < 8: base_demand *= 0.3
 
-if weather_condition == "비/눈":
-    base_demand *= 0.15 
-elif weather_condition == "미세먼지 나쁨":
-    base_demand *= 0.7 
-
+if weather_condition == "비/눈": base_demand *= 0.15 
+elif weather_condition == "미세먼지 나쁨": base_demand *= 0.7 
 predicted_demand = int(base_demand)
 
-# 화면 출력
-col1, col2 = st.columns(2)
 with col1:
-    st.subheader(f"📍 {location.split()[0]} 인프라 (반경 1km)")
-    if kakao_api_key and school_status != "성공":
-        st.error(f"⚠️ API 연동 실패: {school_status}") 
-    
-    st.write(f"- 🎓 검색된 학교 수: **{school_count}개**")
-    st.write(f"- 🚇 검색된 지하철/전철역: **{subway_count}개**")
-
-with col2:
     st.subheader("📊 실시간 예측 결과")
     st.markdown(f"### 예상 수요량: **{predicted_demand}대**")
     if predicted_demand > 100:
@@ -99,12 +115,17 @@ with col2:
     else:
         st.success("🟢 널널 (대여소 여유)")
 
+with col2:
+    st.subheader("🔍 수집된 데이터 요약")
+    st.write(f"- 인근 학교: **{school_count}개** (주황색 마커)")
+    st.write(f"- 인근 지하철역: **{subway_count}개** (파란색 마커)")
+    if sw_status != "성공": st.warning(f"API 상태: {sw_status}")
+
 st.markdown("---")
 st.subheader(f"📈 {day_type.split()[0]} 24시간 예상 수요 패턴")
 
 hours = np.arange(24)
 demands = np.random.randint(10, 30, size=24) + int(loc_base_demand * 0.3)
-
 if "평일" in day_type:
     demands[8:10] += int(loc_base_demand * 1.5) + (subway_count * 3)
     demands[18:20] += int(loc_base_demand * 1.8) + (subway_count * 3)
