@@ -3,7 +3,7 @@ import pandas as pd
 import json
 #feat(data): 시간별 수요 데이터와 기상청 날씨 데이터 병합 로직 작성.
 # 1. API 키 설정 
-API_KEY = '6cdfb8721d44bfefa545d6a41a7e6f56c02b78423aa8dcf8fd54c80d072fe552'
+API_KEY = '본인의 키를 넣어주세요'
 
 # 2. 기상청 날씨 데이터 수집
 print("기상청 API에서 날씨 데이터를 수집합니다...")
