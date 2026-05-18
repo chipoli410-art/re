@@ -3,14 +3,12 @@ import pandas as pd
 import numpy as np
 import requests
 
-# API 통신 에러 확인 기능과 5km(5000m) 반경 확장이 적용된 함수
 def get_nearby_poi_count(lat, lng, api_key, category_code):
     if not api_key:
         return 0, "키 미입력"
     
     url = "https://dapi.kakao.com/v2/local/search/category.json"
     headers = {"Authorization": f"KakaoAK {api_key}"}
-    # 반경을 1000m(1km)에서 5000m(5km)로 대폭 확장!
     params = {"category_group_code": category_code, "y": lat, "x": lng, "radius": 5000}
     
     try:
@@ -18,7 +16,7 @@ def get_nearby_poi_count(lat, lng, api_key, category_code):
         if response.status_code == 200:
             return response.json()['meta']['total_count'], "성공"
         else:
-            return 0, f"에러코드 {response.status_code}" # 키가 틀렸거나 권한이 없으면 여기서 에러 코드를 뱉음
+            return 0, f"에러코드 {response.status_code}"
     except Exception as e:
         return 0, f"요청 실패: {str(e)}"
 
@@ -26,11 +24,10 @@ st.set_page_config(page_title="따릉이 수요 예측 대시보드", layout="wi
 st.title("🚲 따릉이 다차원 수요 예측 대시보드")
 
 st.sidebar.header("🔑 API 설정")
-kakao_api_key = st.sidebar.text_input("9f7b0fa620b4a25d3ce0eb7dc1291afb", type="password")
+kakao_api_key = st.sidebar.text_input("카카오 REST API 키", value="9f7b0fa620b4a25d3ce0eb7dc1291afb", type="password")
 
 st.sidebar.header("🌍 시뮬레이션 환경 설정")
 
-# 지역별 기본 유동 인구 가중치 (API가 0이더라도 혼잡도가 제대로 나오도록 기본값을 대폭 상향!)
 location_coords = {
     "강남역 (오피스/환승)": {"coords": (37.4979, 127.0276), "base": 60},
     "여의도역 (오피스/공원)": {"coords": (37.5215, 126.9246), "base": 55},
@@ -47,17 +44,14 @@ current_hour = st.sidebar.slider("⏰ 시간대", 0, 23, 18)
 lat, lng = location_coords[location]["coords"]
 loc_base_demand = location_coords[location]["base"]
 
-# API 호출 결과와 상태 메시지를 동시에 받음
 school_count, school_status = get_nearby_poi_count(lat, lng, kakao_api_key, "SC4")
 subway_count, subway_status = get_nearby_poi_count(lat, lng, kakao_api_key, "SW8")
 
-# 🧠 수정된 수요 예측 로직 (이제 어느 시간대든 '여유'만 뜨지 않음!)
-# 지역 기본 수요 + 학교(개당 2) + 지하철(개당 4)
 base_demand = loc_base_demand + (school_count * 2) + (subway_count * 4) 
 
 if "평일" in day_type:
     if current_hour in [8, 9, 18, 19]:
-        base_demand *= 2.2 # 출퇴근 시간에 2배 이상 뻥튀기 (강남역이면 150대 넘게 나옴)
+        base_demand *= 2.2 
     elif current_hour < 6:
         base_demand *= 0.2
 else:
@@ -73,12 +67,11 @@ elif weather_condition == "미세먼지 나쁨":
 
 predicted_demand = int(base_demand)
 
-# 🖥️ 화면 출력부
 col1, col2 = st.columns(2)
 with col1:
     st.subheader(f"📍 {location.split()[0]} 인프라 (반경 5km)")
     if kakao_api_key and school_status != "성공":
-        st.error(f"⚠️ API 연동 실패: {school_status}") # API가 실패하면 빨간색 경고창 띄움
+        st.error(f"⚠️ API 연동 실패: {school_status}") 
     
     st.write(f"- 🎓 검색된 학교 수: **{school_count}개**")
     st.write(f"- 🚇 검색된 지하철역: **{subway_count}개**")
@@ -86,7 +79,6 @@ with col1:
 with col2:
     st.subheader("📊 실시간 예측 결과")
     st.markdown(f"### 예상 수요량: **{predicted_demand}대**")
-    # 혼잡도 기준 컷 상향 (숫자가 커졌으므로 기준도 올림)
     if predicted_demand > 100:
         st.error("🚨 매우 혼잡 (자전거 재배치 트럭 출동 요망)")
     elif predicted_demand > 50:
