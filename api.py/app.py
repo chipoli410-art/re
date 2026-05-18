@@ -4,7 +4,6 @@ import numpy as np
 import requests
 import folium
 from streamlit_folium import st_folium
-import random
 
 def get_nearby_poi_data(lat, lng, api_key, category_code):
     if not api_key:
@@ -45,27 +44,36 @@ day_type = st.sidebar.radio("📅 요일 유형", ["평일 (출퇴근 위주)", 
 weather_condition = st.sidebar.selectbox("☔ 기상 상태", ["맑음", "비/눈", "미세먼지 나쁨"])
 current_hour = st.sidebar.slider("⏰ 시간대", 0, 23, 18)
 
-# 🚦 새로운 교통 상황 변수 추가!
-traffic_condition = st.sidebar.selectbox("🚗 주변 교통 상황 (시뮬레이션)", ["원활 (초록)", "서행 (노랑)", "정체 (빨강)"])
+# 🚦 시간대와 요일에 기반한 자동 교통 상황 로직 (수동 입력 제거)
+if "평일" in day_type:
+    if current_hour in [8, 9, 18, 19]:
+        traffic_condition = "정체 (빨강)"
+    elif 10 <= current_hour <= 17:
+        traffic_condition = "서행 (노랑)"
+    else:
+        traffic_condition = "원활 (초록)"
+else: # 주말
+    if 14 <= current_hour <= 19:
+        traffic_condition = "서행 (노랑)"
+    else:
+        traffic_condition = "원활 (초록)"
 
 lat, lng = location_coords[location]["coords"]
 loc_base_demand = location_coords[location]["base"]
 
 schools, s_status = get_nearby_poi_data(lat, lng, kakao_api_key, "SC4")
 subways, sw_status = get_nearby_poi_data(lat, lng, kakao_api_key, "SW8")
-
 school_count = len(schools)
 subway_count = len(subways)
 
-# --- 상단: 실시간 교통 알림 배너 (정체 시에만 등장) ---
+# --- 상단: 실시간 교통 알림 배너 (정체/서행 시 자동 등장) ---
 if traffic_condition == "정체 (빨강)":
-    st.error("🚨 **[교통 혼잡 알림]** 현재 대여소 주변 주요 도로가 매우 혼잡합니다. 자전거 이용 시 안전에 유의하시고, 재배치 트럭은 우회 도로를 이용해주세요!")
+    st.error(f"🚨 **[교통 혼잡 알림]** {current_hour}시 현재, 대여소 주변 주요 도로가 매우 혼잡할 것으로 예상됩니다.")
 elif traffic_condition == "서행 (노랑)":
-    st.warning("⚠️ **[교통 서행]** 주변 도로에 차량이 많습니다. 자전거 라이딩 시 주의가 필요합니다.")
+    st.warning(f"⚠️ **[교통 서행]** {current_hour}시 주변 도로에 차량이 많습니다. 자전거 라이딩 시 주의가 필요합니다.")
 
 st.subheader(f"🗺️ {location.split()[0]} 주변 인프라 및 교통 상황")
 
-# Folium 지도 생성
 m = folium.Map(location=[lat, lng], zoom_start=15)
 folium.Marker([lat, lng], popup="선택한 대여소", icon=folium.Icon(color='black', icon='info-sign')).add_to(m)
 folium.Circle([lat, lng], radius=1000, color='blue', fill=True, fill_opacity=0.1).add_to(m)
@@ -75,25 +83,20 @@ for s in schools:
 for sw in subways:
     folium.Marker(location=[float(sw['y']), float(sw['x'])], popup=sw['place_name'], icon=folium.Icon(color='blue', icon='subway', prefix='fa')).add_to(m)
 
-# 🗺️ 지도 위에 '교통 상황 도로선' 그리기 (시뮬레이션)
+# 🗺️ 자동 연산된 교통 상황을 지도에 반영
 traffic_colors = {"원활 (초록)": "green", "서행 (노랑)": "orange", "정체 (빨강)": "red"}
 t_color = traffic_colors[traffic_condition]
 
-# 대여소 주변을 지나는 2개의 가상 주요 도로망 그리기
-road1_start = [lat - 0.005, lng - 0.005]
-road1_end = [lat + 0.005, lng + 0.005]
-road2_start = [lat + 0.005, lng - 0.005]
-road2_end = [lat - 0.005, lng + 0.005]
+road1_start, road1_end = [lat - 0.005, lng - 0.005], [lat + 0.005, lng + 0.005]
+road2_start, road2_end = [lat + 0.005, lng - 0.005], [lat - 0.005, lng + 0.005]
 
-folium.PolyLine([road1_start, road1_end], color=t_color, weight=8, opacity=0.7, tooltip=f"현재 도로 상황: {traffic_condition}").add_to(m)
-folium.PolyLine([road2_start, road2_end], color=t_color, weight=8, opacity=0.7, tooltip=f"현재 도로 상황: {traffic_condition}").add_to(m)
+folium.PolyLine([road1_start, road1_end], color=t_color, weight=8, opacity=0.7, tooltip=f"예상 도로 상황: {traffic_condition}").add_to(m)
+folium.PolyLine([road2_start, road2_end], color=t_color, weight=8, opacity=0.7, tooltip=f"예상 도로 상황: {traffic_condition}").add_to(m)
 
-# 지도 출력
 st_folium(m, width=1100, height=400)
 
 st.markdown("---")
 
-# --- 하단: 예측 결과 및 차트 ---
 col1, col2 = st.columns(2)
 
 base_demand = loc_base_demand + (school_count * 2) + (subway_count * 4) 
@@ -107,14 +110,14 @@ else:
 if weather_condition == "비/눈": base_demand *= 0.15 
 elif weather_condition == "미세먼지 나쁨": base_demand *= 0.7 
 
-# 차가 막히면 오히려 단거리 자전거 수요가 약간 증가하는 로직 추가!
+# 차 막힘 자동 인식 시 수요 증가!
 if traffic_condition == "정체 (빨강)":
     base_demand *= 1.15 
 
 predicted_demand = int(base_demand)
 
 with col1:
-    st.subheader("📊 실시간 예측 결과")
+    st.subheader("📊 예측 결과 (교통/날씨/인프라 반영)")
     st.markdown(f"### 예상 수요량: **{predicted_demand}대**")
     
     if traffic_condition == "정체 (빨강)":
