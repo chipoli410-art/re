@@ -4,8 +4,8 @@ import numpy as np
 import requests
 import folium
 from streamlit_folium import st_folium
+import random
 
-# API에서 장소 리스트(이름, 좌표)를 가져오는 함수로 업그레이드
 def get_nearby_poi_data(lat, lng, api_key, category_code):
     if not api_key:
         return [], "키 미입력"
@@ -26,10 +26,8 @@ def get_nearby_poi_data(lat, lng, api_key, category_code):
 st.set_page_config(page_title="따릉이 수요 예측 대시보드", layout="wide")
 st.title("🚲 따릉이 실시간 인프라 분석 & 수요 예측")
 
-# API 설정
 kakao_api_key = "09611d17ff9500ed2d94a6d607cf3609"
 
-# 사이드바 설정
 st.sidebar.header("🌍 시뮬레이션 환경 설정")
 location_coords = {
     "강남역 (오피스/환승)": {"coords": (37.4979, 127.0276), "base": 60},
@@ -39,12 +37,7 @@ location_coords = {
     "노원역 (주거/학원가)": {"coords": (37.6542, 127.0568), "base": 50},
     "잠실역 (쇼핑/테마파크)": {"coords": (37.5133, 127.1001), "base": 65},
     "신도림역 (대형 환승거점)": {"coords": (37.5088, 126.8912), "base": 55},
-    "혜화역 (대학로/문화)": {"coords": (37.5823, 127.0019), "base": 50},
-    "왕십리역 (다중 환승/대학가)": {"coords": (37.5611, 127.0385), "base": 50},
-    "용산역 (KTX/쇼핑)": {"coords": (37.5299, 126.9646), "base": 55},
-    "사당역 (경기 남부 환승)": {"coords": (37.4765, 126.9816), "base": 60},
-    "건대입구역 (대학가/유흥)": {"coords": (37.5404, 127.0692), "base": 60},
-    "신촌역 (대학가)": {"coords": (37.5552, 126.9368), "base": 55}
+    "건대입구역 (대학가/유흥)": {"coords": (37.5404, 127.0692), "base": 60}
 }
 
 location = st.sidebar.selectbox("📍 지역 선택", list(location_coords.keys()))
@@ -52,43 +45,48 @@ day_type = st.sidebar.radio("📅 요일 유형", ["평일 (출퇴근 위주)", 
 weather_condition = st.sidebar.selectbox("☔ 기상 상태", ["맑음", "비/눈", "미세먼지 나쁨"])
 current_hour = st.sidebar.slider("⏰ 시간대", 0, 23, 18)
 
+# 🚦 새로운 교통 상황 변수 추가!
+traffic_condition = st.sidebar.selectbox("🚗 주변 교통 상황 (시뮬레이션)", ["원활 (초록)", "서행 (노랑)", "정체 (빨강)"])
+
 lat, lng = location_coords[location]["coords"]
 loc_base_demand = location_coords[location]["base"]
 
-# 실시간 데이터 수집 (학교 SC4, 지하철 SW8)
 schools, s_status = get_nearby_poi_data(lat, lng, kakao_api_key, "SC4")
 subways, sw_status = get_nearby_poi_data(lat, lng, kakao_api_key, "SW8")
 
 school_count = len(schools)
 subway_count = len(subways)
 
-# --- 상단: 실시간 지도 시각화 ---
-st.subheader(f"🗺️ {location.split()[0]} 주변 인프라 분석 (반경 1km)")
+# --- 상단: 실시간 교통 알림 배너 (정체 시에만 등장) ---
+if traffic_condition == "정체 (빨강)":
+    st.error("🚨 **[교통 혼잡 알림]** 현재 대여소 주변 주요 도로가 매우 혼잡합니다. 자전거 이용 시 안전에 유의하시고, 재배치 트럭은 우회 도로를 이용해주세요!")
+elif traffic_condition == "서행 (노랑)":
+    st.warning("⚠️ **[교통 서행]** 주변 도로에 차량이 많습니다. 자전거 라이딩 시 주의가 필요합니다.")
+
+st.subheader(f"🗺️ {location.split()[0]} 주변 인프라 및 교통 상황")
 
 # Folium 지도 생성
 m = folium.Map(location=[lat, lng], zoom_start=15)
-
-# 중심점 마커
 folium.Marker([lat, lng], popup="선택한 대여소", icon=folium.Icon(color='black', icon='info-sign')).add_to(m)
-
-# 검색 반경 1km 원 그리기
 folium.Circle([lat, lng], radius=1000, color='blue', fill=True, fill_opacity=0.1).add_to(m)
 
-# 학교 마커 찍기
 for s in schools:
-    folium.Marker(
-        location=[float(s['y']), float(s['x'])],
-        popup=s['place_name'],
-        icon=folium.Icon(color='orange', icon='graduation-cap', prefix='fa')
-    ).add_to(m)
-
-# 지하철 마커 찍기
+    folium.Marker(location=[float(s['y']), float(s['x'])], popup=s['place_name'], icon=folium.Icon(color='orange', icon='graduation-cap', prefix='fa')).add_to(m)
 for sw in subways:
-    folium.Marker(
-        location=[float(sw['y']), float(sw['x'])],
-        popup=sw['place_name'],
-        icon=folium.Icon(color='blue', icon='subway', prefix='fa')
-    ).add_to(m)
+    folium.Marker(location=[float(sw['y']), float(sw['x'])], popup=sw['place_name'], icon=folium.Icon(color='blue', icon='subway', prefix='fa')).add_to(m)
+
+# 🗺️ 지도 위에 '교통 상황 도로선' 그리기 (시뮬레이션)
+traffic_colors = {"원활 (초록)": "green", "서행 (노랑)": "orange", "정체 (빨강)": "red"}
+t_color = traffic_colors[traffic_condition]
+
+# 대여소 주변을 지나는 2개의 가상 주요 도로망 그리기
+road1_start = [lat - 0.005, lng - 0.005]
+road1_end = [lat + 0.005, lng + 0.005]
+road2_start = [lat + 0.005, lng - 0.005]
+road2_end = [lat - 0.005, lng + 0.005]
+
+folium.PolyLine([road1_start, road1_end], color=t_color, weight=8, opacity=0.7, tooltip=f"현재 도로 상황: {traffic_condition}").add_to(m)
+folium.PolyLine([road2_start, road2_end], color=t_color, weight=8, opacity=0.7, tooltip=f"현재 도로 상황: {traffic_condition}").add_to(m)
 
 # 지도 출력
 st_folium(m, width=1100, height=400)
@@ -98,7 +96,6 @@ st.markdown("---")
 # --- 하단: 예측 결과 및 차트 ---
 col1, col2 = st.columns(2)
 
-# 수요 예측 계산 로직
 base_demand = loc_base_demand + (school_count * 2) + (subway_count * 4) 
 if "평일" in day_type:
     if current_hour in [8, 9, 18, 19]: base_demand *= 2.2 
@@ -109,11 +106,20 @@ else:
 
 if weather_condition == "비/눈": base_demand *= 0.15 
 elif weather_condition == "미세먼지 나쁨": base_demand *= 0.7 
+
+# 차가 막히면 오히려 단거리 자전거 수요가 약간 증가하는 로직 추가!
+if traffic_condition == "정체 (빨강)":
+    base_demand *= 1.15 
+
 predicted_demand = int(base_demand)
 
 with col1:
     st.subheader("📊 실시간 예측 결과")
     st.markdown(f"### 예상 수요량: **{predicted_demand}대**")
+    
+    if traffic_condition == "정체 (빨강)":
+        st.info("💡 (차량 정체로 인해 단거리 대체 이동 수단인 자전거 수요가 15% 상승했습니다)")
+
     if predicted_demand > 100:
         st.error("🚨 매우 혼잡 (자전거 재배치 트럭 출동 요망)")
     elif predicted_demand > 50:
