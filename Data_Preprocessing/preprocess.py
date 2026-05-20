@@ -4,7 +4,7 @@ import glob
 import os
 
 # 1. 1년치 원본 파일들이 들어있는 폴더 경로 지정
-file_pattern = "raw_data/*.csv"  
+file_pattern = "origin_data/*.csv"  
 file_list = glob.glob(file_pattern)
 
 print(f"총 {len(file_list)}개의 파일을 발견했습니다. 전처리를 시작합니다...\n")
