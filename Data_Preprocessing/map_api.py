@@ -25,12 +25,12 @@ for idx, row in tqdm(station_df.iterrows(), total=len(station_df)):
     lat = str(row['위도'])
     
     # ----------------------------------------------------
-    # A. 반경 500m 이내 지하철역(SW8) 개수 조회
+    # A. 반경 1km 이내 지하철역(SW8) 개수 조회
     # ----------------------------------------------------
     params_subway = {
         'category_group_code': 'SW8',
         'x': lng, 'y': lat,
-        'radius': 500, # 500 미터
+        'radius': 1000, # 1000 미터
     }
     res_subway = requests.get(url, headers=headers, params=params_subway)
     subway_count = 0
@@ -39,12 +39,12 @@ for idx, row in tqdm(station_df.iterrows(), total=len(station_df)):
         subway_count = res_subway.json()['meta']['total_count']
         
     # ----------------------------------------------------
-    # B. 반경 500m 이내 학교(SC4) 개수 조회
+    # B. 반경 1km 이내 학교(SC4) 개수 조회
     # ----------------------------------------------------
     params_school = {
         'category_group_code': 'SC4',
         'x': lng, 'y': lat,
-        'radius': 500, 
+        'radius': 1000, 
     }
     res_school = requests.get(url, headers=headers, params=params_school)
     school_count = 0
@@ -54,8 +54,8 @@ for idx, row in tqdm(station_df.iterrows(), total=len(station_df)):
     # 데이터 저장
     poi_data.append({
         '대여소_ID': station_id,
-        '지하철역_수_500m': subway_count,
-        '학교_수_500m': school_count
+        '지하철역_수_1km': subway_count,
+        '학교_수_1km': school_count
     })
     
     # 카카오 서버 과부하(차단)를 막기 위해 아주 짧게 휴식
@@ -67,14 +67,30 @@ print("\nAPI 수집 완료! 데이터 샘플:")
 print(poi_df.head())
 
 # ---------------------------------------------------------
-# 4. 기존 머신러닝 데이터와 최종 병합
+# 4. 기존 머신러닝 데이터와 최종 병합 (수정된 부분)
 # ---------------------------------------------------------
 print("\n기존 머신러닝 데이터와 병합합니다...")
-# 이전에 만든 ML 데이터 불러오기
+
+# 1) 이전에 만든 ML 데이터(숫자만 있는 파일) 불러오기
 ml_df = pd.read_csv('ml_ready_bike_data_basic.csv') 
 
-# 대여소_ID 기준으로 결합
-final_ml_df = pd.merge(ml_df, poi_df, on='대여소_ID', how='left')
+# 2) 문자열 ID와 숫자 ID가 모두 들어있는 원본(병합 전) 데이터 불러오기
+# (파일명은 예전에 만드셨던 원본 파일명으로 맞춰주세요)
+original_df = pd.read_csv('preprocessed_1year_merged_final.csv')
+
+# 3) 원본 데이터에서 [문자열 ID, 숫자 ID] 두 개만 추출해서 짝꿍 사전(매핑 테이블) 만들기
+# 원본 데이터에 카테고리화 코드를 다시 한 번 적용하여 번호를 알아냅니다.
+original_df['대여소_ID_num'] = original_df['대여소_ID'].astype('category').cat.codes
+mapping_table = original_df[['대여소_ID', '대여소_ID_num']].drop_duplicates()
+
+# 4) 카카오 API로 수집한 데이터(poi_df)에 '대여소_ID_num' 컬럼 붙여주기
+poi_df_mapped = pd.merge(poi_df, mapping_table, on='대여소_ID', how='left')
+
+# 5) 드디어! 머신러닝 데이터(ml_df)와 POI 데이터(poi_df_mapped)를 숫자 ID 기준으로 결합!
+final_ml_df = pd.merge(ml_df, poi_df_mapped, on='대여소_ID_num', how='left')
+
+# 불필요해진 문자열 '대여소_ID' 컬럼은 모델에 안 쓸 거니까 삭제
+final_ml_df.drop('대여소_ID', axis=1, inplace=True)
 
 # 저장
 final_ml_df.to_csv('ml_ready_bike_data_with_api_poi.csv', index=False, encoding='utf-8-sig')
