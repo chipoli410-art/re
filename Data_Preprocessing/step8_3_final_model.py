@@ -4,12 +4,15 @@ import lightgbm as lgb
 from sklearn.metrics import mean_squared_error, r2_score
 import matplotlib.pyplot as plt
 import seaborn as sns
+import warnings
+
+warnings.filterwarnings('ignore')
 
 # 한글 폰트 설정
 plt.rcParams['font.family'] = 'Malgun Gothic'
 plt.rcParams['axes.unicode_minus'] = False
 
-print("1. 1단계에서 저장한 Train / Test 데이터를 불러옵니다...")
+print("1. Train / Test 데이터를 불러옵니다...")
 train_df = pd.read_csv('train_preprocessed.csv')
 test_df = pd.read_csv('test_preprocessed.csv')
 
@@ -19,7 +22,6 @@ features = [
     '지하철역_수_1km', '학교_수_1km'
 ]
 
-# 카테고리 변환
 for col in train_df[features].select_dtypes(include=['object']).columns:
     train_df[col] = train_df[col].astype('category')
     test_df[col] = test_df[col].astype('category')
@@ -27,43 +29,51 @@ for col in train_df[features].select_dtypes(include=['object']).columns:
 X_train, y_train = train_df[features], train_df['총_대여건수(Y)']
 X_test, y_test = test_df[features], test_df['총_대여건수(Y)']
 
-print("2. 최종 모델 학습 중...")
+# 🌟 [핵심] 학습 데이터 타겟 변수 로그 변환
+print("2. 타겟 변수(대여량)에 로그(Log) 변환을 적용합니다...")
+y_train_log = np.log1p(y_train)
+
+print("3. 찾은 최적의 파라미터로 최종 모델을 학습합니다...")
 # 🚨 2단계에서 출력된 study.best_params 값을 아래에 덮어씌워주세요! 
 best_params = {
-    'learning_rate': 0.0848, # (예시값) 2단계 결과를 넣어주세요
-    'num_leaves': 115,       # (예시값)
-    'max_depth': 14,         # (예시값)
-    'min_child_samples': 29, # (예시값)
-    'subsample': 0.695,      # (예시값)
-    'colsample_bytree': 0.895 # (예시값)
+    'learning_rate': 0.05,   # (예시값)
+    'num_leaves': 100,       # (예시값)
+    'max_depth': 15,         # (예시값)
+    'min_child_samples': 40, # (예시값)
+    'subsample': 0.8,        # (예시값)
+    'colsample_bytree': 0.9  # (예시값)
 }
-best_params.update({'objective': 'regression', 'random_state': 42, 'n_estimators': 1000, 'n_jobs': -1})
+best_params.update({'objective': 'regression', 'random_state': 42, 'n_estimators': 1500, 'n_jobs': -1})
 
 final_model = lgb.LGBMRegressor(**best_params)
-final_model.fit(X_train, y_train, eval_set=[(X_test, y_test)], callbacks=[lgb.early_stopping(30, verbose=False)])
 
-final_preds = final_model.predict(X_test)
+# 검증 시에도 조기 종료(Early Stopping)를 위해 로그 변환된 Test 정답지를 제공
+y_test_log = np.log1p(y_test)
+final_model.fit(X_train, y_train_log, eval_set=[(X_test, y_test_log)], callbacks=[lgb.early_stopping(50, verbose=False)])
 
-# 💡 [결과 확인 1] 최종 성능 수치
+print("4. Test 데이터 예측 및 역 로그 변환(복원)...")
+preds_log = final_model.predict(X_test)
+final_preds = np.expm1(preds_log) # 🌟 역 변환: 예측된 로그값을 다시 자전거 대수로 복원
+final_preds = np.clip(final_preds, a_min=0, a_max=None) # 음수 대여 방지
+
+# ==========================================
+# 💡 [결과 확인] 최종 성능 수치
+# ==========================================
 print("\n" + "="*40)
-print(" 🚀 [최종 결과] 평가 지표 🚀")
+print(" 🚀 [로그 변환 최종 모델 평가 지표] 🚀")
 print(f" - RMSE : {np.sqrt(mean_squared_error(y_test, final_preds)):.4f} 대")
 print(f" - R²   : {r2_score(y_test, final_preds):.4f}")
 print("="*40)
 
-# 💡 [결과 확인 2] 변수 중요도 (Feature Importance) 실제 점수 출력
 importance_df = pd.DataFrame({
     '변수명': features, 
     '기여도_점수(Gain)': final_model.feature_importances_
 }).sort_values(by='기여도_점수(Gain)', ascending=False).reset_index(drop=True)
 
-print("\n💡 [인사이트] 최종 모델의 변수별 기여도 실제 수치 랭킹:")
-print(importance_df)
-
 # 그래프 시각화 저장
 plt.figure(figsize=(10, 8))
 sns.barplot(data=importance_df, x='기여도_점수(Gain)', y='변수명', palette='viridis')
-plt.title('최종 모델 변수 중요도 (Feature Importance)', fontsize=15, fontweight='bold')
+plt.title('로그 변환 적용 LightGBM 변수 중요도', fontsize=15, fontweight='bold')
 plt.tight_layout()
-plt.savefig('final_feature_importance.png', dpi=300)
-print("\n✅ 'final_feature_importance.png' 파일이 생성되었습니다.")
+plt.savefig('final_feature_importance_log.png', dpi=300)
+print("\n✅ 'final_feature_importance_log.png' 파일이 생성되었습니다.")
