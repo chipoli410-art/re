@@ -35,14 +35,7 @@ y_train_log = np.log1p(y_train)
 
 print("3. 찾은 최적의 파라미터로 최종 모델을 학습합니다...")
 # 🚨 2단계에서 출력된 study.best_params 값을 아래에 덮어씌워주세요! 
-best_params = {
-    'learning_rate': 0.05,   # (예시값)
-    'num_leaves': 100,       # (예시값)
-    'max_depth': 15,         # (예시값)
-    'min_child_samples': 40, # (예시값)
-    'subsample': 0.8,        # (예시값)
-    'colsample_bytree': 0.9  # (예시값)
-}
+best_params = {'learning_rate': 0.09361605510867393, 'num_leaves': 31, 'max_depth': 7, 'min_child_samples': 65, 'subsample': 0.7356871353975147, 'colsample_bytree': 0.8172792233718896}
 best_params.update({'objective': 'regression', 'random_state': 42, 'n_estimators': 1500, 'n_jobs': -1})
 
 final_model = lgb.LGBMRegressor(**best_params)

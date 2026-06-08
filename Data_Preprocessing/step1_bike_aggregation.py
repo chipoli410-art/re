@@ -9,7 +9,7 @@ import warnings
 # 불필요한 경고 메시지 숨김
 warnings.filterwarnings('ignore')
 
-print("1. [STEP 1] 'origin_data' 폴더 내의 1년 치 원본 파일 탐색 중...")
+print("1. [STEP 1] 'origin_data' 폴더 내의 파일 탐색 중...")
 file_pattern = os.path.join("origin_data", "*.csv")  
 file_list = glob.glob(file_pattern)
 
@@ -21,80 +21,119 @@ print(f"총 {len(file_list)}개의 파일을 발견했습니다. 전처리를 �
 
 all_processed_data = []
 
+def find_col(df, possible_names):
+    for name in possible_names:
+        if name in df.columns:
+            return name
+    return None
+
+def parse_hour(x):
+    s = str(x).strip()
+    s = ''.join(filter(str.isdigit, s))
+    if not s: 
+        return 0
+    if len(s) >= 3: 
+        return int(s[:-2])
+    else:
+        return int(s)
+
 # ---------------------------------------------------------
-# 2. 모든 파일을 순회하며 개별 전처리 및 메모리 최적화
+# 2. 모든 파일을 순회하며 개별 전처리
 # ---------------------------------------------------------
-# tqdm으로 365개 파일의 진행 상태바 생성
 for file_path in tqdm(file_list, desc="개별 파일 집계 중"):
-    # 가. 다중 인코딩 시도 로직 (원본 코드의 훌륭한 방어 로직 적용)
-    encodings_to_try = ['cp949', 'utf-8', 'utf-8-sig', 'euc-kr']
     df = None
-    
-    for enc in encodings_to_try:
+    for enc in ['utf-8', 'cp949', 'utf-8-sig', 'euc-kr']:
         try:
-            # low_memory=False 옵션 추가로 대용량 파일 경고 방지
             df = pd.read_csv(file_path, encoding=enc, low_memory=False)
             break
         except UnicodeDecodeError:
             continue
             
     if df is None:
-        print(f"\n[경고] 파일을 열 수 없어 건너뜁니다: {file_path}")
         continue
 
-    # 나. [핵심] '출발시간' 기준 데이터만 필터링 (반납 중복 집계 방지)
-    df_depart = df[df['집계_기준'] == '출발시간'].copy()
+    # 💡 [핵심 방어 1] 7월 이후 띄어쓰기가 들어간 컬럼명 완벽 대응 (모든 공백 제거)
+    df.columns = df.columns.str.replace(r'\s+', '', regex=True)
+
+    col_agg = find_col(df, ['집계_기준', '집계기준'])
+    if col_agg is not None:
+        df = df[df[col_agg].astype(str).str.strip() == '출발시간'].copy()
     
-    # 다. 시간대 정제 및 날짜 정수 변환
-    df_depart['기준_시간대'] = df_depart['기준_시간대'].astype(str).str.zfill(4).str[:2].astype(int)
-    # 안전한 날짜(int) 변환을 위해 기호 제거
-    df_depart['기준_날짜'] = df_depart['기준_날짜'].astype(str).str.replace(r'\D', '', regex=True).astype(int)
-    # 천 단위 콤마 등 찌꺼기 제거 후 정수 변환
-    df_depart['전체_건수'] = df_depart['전체_건수'].astype(str).str.replace(',', '')
-    df_depart['전체_건수'] = pd.to_numeric(df_depart['전체_건수'], errors='coerce').fillna(0).astype(int)
+    # ==========================================================
+    # 💡 [업데이트] 7월 이후 몰래 바뀐 공공데이터 컬럼명 완벽 추가
+    # ==========================================================
+    col_time = find_col(df, ['기준_시간대', '시간대', '대여시간', '대여시간(시)', '기준_시간'])
+    col_date = find_col(df, ['기준_날짜', '대여일자', '일자'])
+    col_st_id = find_col(df, ['시작_대여소_ID', '시작대여소ID', '시작대여소번호', '대여소_ID', '대여소번호', '대여소ID', '시작_대여소'])
+    col_st_nm = find_col(df, ['시작_대여소명', '대여소명', '대여소이름'])
+    col_count = find_col(df, ['전체_건수', '이용건수', '대여건수', '건수', '전체건수'])
+
+    if not all([col_time, col_date, col_st_id, col_st_nm, col_count]):
+        # 실패 시 도대체 어떤 컬럼명으로 바뀌었는지 확인하기 위해 출력
+        print(f"\n[스킵] {os.path.basename(file_path)} | 현재 컬럼: {list(df.columns)}")
+        continue
     
-    # 라. 파일 단위 1차 그룹화 (메모리를 획기적으로 줄이는 핵심 비법)
-    df_grouped = df_depart.groupby(['기준_날짜', '기준_시간대', '시작_대여소_ID', '시작_대여소명'])['전체_건수'].sum().reset_index()
-    
-    all_processed_data.append(df_grouped)
+    try:
+        df[col_time] = df[col_time].apply(parse_hour)
+        df[col_date] = df[col_date].astype(str).str.replace(r'\D', '', regex=True).astype(int)
+        
+        # 💡 [핵심 방어 2] 침묵의 에러(KeyError) 방지 및 대여소 포맷 강제 통일
+        df[col_st_id] = df[col_st_id].astype(str).str.extract(r'(\d+)', expand=False)
+        df[col_st_id] = 'ST-' + df[col_st_id].fillna('0') 
+        
+        df[col_count] = df[col_count].astype(str).str.replace(',', '')
+        df[col_count] = pd.to_numeric(df[col_count], errors='coerce').fillna(0).astype(int)
+        
+        df_grouped = df.groupby([col_date, col_time, col_st_id, col_st_nm])[col_count].sum().reset_index()
+        df_grouped.columns = ['대여일자', '대여시간(시)', '대여소_ID', '대여소명', '총_대여건수(Y)']
+        
+        all_processed_data.append(df_grouped)
+    except Exception as e:
+        print(f"\n[에러 스킵] {os.path.basename(file_path)} 처리 중 문제 발생: {e}")
+        continue
 
 # ---------------------------------------------------------
-# 3. 1년 치 데이터 결합 및 컬럼명 변경
+# 3. 전체 데이터 결합
 # ---------------------------------------------------------
-print("\n3. 집계된 1년 치 데이터를 하나의 테이블로 병합 중...")
+print("\n3. 집계된 전체 데이터를 하나의 테이블로 병합 중...")
+if not all_processed_data:
+    print("❌ 에러: 병합할 데이터가 없습니다. 모든 파일이 스킵되었습니다.")
+    exit()
+    
 combined_df = pd.concat(all_processed_data, ignore_index=True)
-
-# 혹시 파일 간 겹치는 날짜/시간이 있을 수 있으므로 최종 그룹화 1회 추가 수행
-combined_df = combined_df.groupby(['기준_날짜', '기준_시간대', '시작_대여소_ID', '시작_대여소명'])['전체_건수'].sum().reset_index()
-
-combined_df.rename(columns={
-    '기준_날짜': '대여일자',
-    '기준_시간대': '대여시간(시)',
-    '시작_대여소_ID': '대여소_ID',
-    '시작_대여소명': '대여소명',
-    '전체_건수': '총_대여건수(Y)'
-}, inplace=True)
+combined_df = combined_df.groupby(['대여일자', '대여시간(시)', '대여소_ID', '대여소명'])['총_대여건수(Y)'].sum().reset_index()
 
 # ---------------------------------------------------------
-# 4. 빈 시간대(수요 0) 1년 치 풀(Full) 패딩 채우기
+# 4. [수정됨] 대여소별 생애주기 기반 스마트 제로 패딩
 # ---------------------------------------------------------
-print("4. 365일 24시간 전체 그리드 생성 및 제로 패딩 적용 중... (수 분 소요)")
+print("4. 대여소 생애주기 기반 스마트 제로 패딩 진행 중... (시간이 조금 소요됩니다)")
 
 unique_dates = combined_df['대여일자'].unique()
+unique_dates.sort()
 all_hours = list(range(24))
+
 unique_stations = combined_df[['대여소_ID', '대여소명']].drop_duplicates(subset=['대여소_ID'], keep='last')
 
-# 1년 치 날짜 x 24시간 x 전체 대여소의 모든 조합 생성
-combinations = list(itertools.product(unique_dates, all_hours, unique_stations['대여소_ID']))
-base_df = pd.DataFrame(combinations, columns=['대여일자', '대여시간(시)', '대여소_ID'])
+# 💡 대여소별 최초 운영일과 최종 운영일 파악
+station_lifespan = combined_df.groupby('대여소_ID')['대여일자'].agg(최초일='min', 최종일='max').reset_index()
 
-# 기본 틀에 대여소명 매핑
+valid_grids = []
+
+for _, row in station_lifespan.iterrows():
+    st_id = row['대여소_ID']
+    start_date = row['최초일']
+    end_date = row['최종일']
+    
+    # 해당 대여소가 실제로 운영되었던 날짜 구간만 추출
+    active_dates = unique_dates[(unique_dates >= start_date) & (unique_dates <= end_date)]
+    
+    grid = pd.DataFrame(list(itertools.product(active_dates, all_hours, [st_id])), columns=['대여일자', '대여시간(시)', '대여소_ID'])
+    valid_grids.append(grid)
+
+base_df = pd.concat(valid_grids, ignore_index=True)
 base_df = pd.merge(base_df, unique_stations, on='대여소_ID', how='left')
 
-# 생성된 1년 치 기본 틀에 실제 집계된 데이터 병합
 df_final = pd.merge(base_df, combined_df, on=['대여일자', '대여시간(시)', '대여소_ID', '대여소명'], how='left')
-
-# 빈칸 0으로 채우기
 df_final['총_대여건수(Y)'] = df_final['총_대여건수(Y)'].fillna(0).astype(int)
 
 # ---------------------------------------------------------
@@ -102,9 +141,8 @@ df_final['총_대여건수(Y)'] = df_final['총_대여건수(Y)'].fillna(0).asty
 # ---------------------------------------------------------
 df_final = df_final.sort_values(by=['대여일자', '대여소_ID', '대여시간(시)']).reset_index(drop=True)
 
-output_filename = "step1_aggregated_bike.csv"
-print(f"\n5. 최종 데이터 저장 중... (데이터 형태: {df_final.shape})")
+output_filename = "step1_aggregated_bike_smart_test.csv"
+print(f"\n5. 최종 데이터 저장 중... (총 {len(df_final):,} 행)")
 df_final.to_csv(output_filename, index=False, encoding='utf-8-sig')
 
-print(f"\n🎉 완료! '{output_filename}' 파일이 성공적으로 생성되었습니다.")
-print(df_final.head(10))
+print(f"\n🎉 완료! 유령 데이터가 제거된 아주 깔끔한 '{output_filename}' 파일이 생성되었습니다.")
