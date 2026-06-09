@@ -5,7 +5,7 @@ import time
 from tqdm import tqdm
 
 print("1. [STEP 3] Step 2 날씨 병합 데이터 로드 중...")
-bike_weather_df = pd.read_csv('step2_bike_weather_test.csv')
+bike_weather_df = pd.read_csv('step2_bike_weather_26.csv')
 
 print("2. 대여소 좌표 데이터(bike_stations.csv) 로드 중...")
 station_df = pd.read_csv('bike_stations.csv', encoding='cp949')
@@ -36,6 +36,6 @@ poi_df = pd.DataFrame(poi_data)
 print("4. 기존 데이터에 공간 정보 병합 중...")
 merged_df = pd.merge(bike_weather_df, poi_df, on='대여소_ID', how='left')
 
-output_file = 'step3_bike_weather_poi_test.csv'
+output_file = 'step3_bike_weather_poi_26.csv'
 merged_df.to_csv(output_file, index=False, encoding='utf-8-sig')
 print(f" ✔️ [STEP 3 완료] 공간 정보 병합 데이터 '{output_file}' 생성됨!")

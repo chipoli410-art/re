@@ -5,7 +5,7 @@ import json
 import time
 
 print("1. [STEP 2] Step 1 집계 데이터 로드 중...")
-bike_df = pd.read_csv('step1_aggregated_bike_smart_test.csv')
+bike_df = pd.read_csv('step1_aggregated_bike_smart_26.csv')
 
 # Step 1 데이터에서 자동으로 시작일과 종료일 추출
 start_date, end_date = str(bike_df['대여일자'].min()), str(bike_df['대여일자'].max())
@@ -66,7 +66,7 @@ merged_df = pd.merge(bike_df, weather_df, on=['대여일자', '대여시간(시)
 # 혹시 날씨 API에 누락된 시간이 있다면 0으로 안전하게 채움
 merged_df.fillna(0, inplace=True) 
 
-output_file = 'step2_bike_weather_test.csv'
+output_file = 'step2_bike_weather_26.csv'
 merged_df.to_csv(output_file, index=False, encoding='utf-8-sig')
 
 print(f"\n ✔️ [STEP 2 완료] 날씨 병합 데이터 '{output_file}' 생성 완료!")

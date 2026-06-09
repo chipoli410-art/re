@@ -10,7 +10,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 print("1. [STEP 1] 'origin_data' 폴더 내의 파일 탐색 중...")
-file_pattern = os.path.join("origin_data", "*.csv")  
+file_pattern = os.path.join("year26", "*.csv")  
 file_list = glob.glob(file_pattern)
 
 if not file_list:
@@ -141,7 +141,7 @@ df_final['총_대여건수(Y)'] = df_final['총_대여건수(Y)'].fillna(0).asty
 # ---------------------------------------------------------
 df_final = df_final.sort_values(by=['대여일자', '대여소_ID', '대여시간(시)']).reset_index(drop=True)
 
-output_filename = "step1_aggregated_bike_smart_test.csv"
+output_filename = "step1_aggregated_bike_smart_26.csv"
 print(f"\n5. 최종 데이터 저장 중... (총 {len(df_final):,} 행)")
 df_final.to_csv(output_filename, index=False, encoding='utf-8-sig')
 
