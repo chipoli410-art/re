@@ -10,7 +10,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 print("1. [STEP 1] 'origin_data' 폴더 내의 파일 탐색 중...")
-file_pattern = os.path.join("year26", "*.csv")  
+file_pattern = os.path.join("origin_data_26", "*.csv")  
 file_list = glob.glob(file_pattern)
 
 if not file_list:
