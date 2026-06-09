@@ -95,6 +95,25 @@ def get_realtime_bike_status():
     
     return df, "성공"
 
+# 💡 [신규 추가] 오픈 기상 API 연동 함수
+@st.cache_data(ttl=600)
+def get_seoul_weather():
+    """Open-Meteo API를 사용해 서울의 현재 기상 정보를 가져옵니다."""
+    url = "https://api.open-meteo.com/v1/forecast?latitude=37.5665&longitude=126.9780&current=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m&timezone=Asia%2FTokyo"
+    try:
+        res = requests.get(url, timeout=5)
+        if res.status_code == 200:
+            data = res.json()['current']
+            return {
+                '기온': float(data['temperature_2m']),
+                '습도': float(data['relative_humidity_2m']),
+                '강수량': float(data['precipitation']),
+                '풍속': float(data['wind_speed_10m'])
+            }, "성공"
+        return None, f"API 오류"
+    except Exception:
+        return None, f"연결 실패"
+
 @st.cache_data
 def load_and_adapt_data():
     try:
@@ -118,7 +137,7 @@ def main():
 
     with st.sidebar:
         # 타이틀에서 AI 제거
-        st.markdown("<h2 style='text-align: center; color: #78c2ff;'>🚲 따릉이 지능형 시스템</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center; color: #78c2ff;'>🚲 따릉이 수요예측 시스템</h2>", unsafe_allow_html=True)
         st.markdown("<p style='text-align: center; color: #FFFFFF; font-size: 14px; opacity: 0.8;'>수요 예측 대시보드</p>", unsafe_allow_html=True)
         st.divider()
 
@@ -146,7 +165,7 @@ def main():
 # 🏠 3. 홈 화면 (검색창 GPS 매칭 & 명칭 정제 통합 완성본)
 # ==========================================
 def show_home(data):
-    st.markdown('<div class="main-header">🚲 서울시 따릉이 지능형 대시보드</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">🚲 서울시 따릉이 수요예측 대시보드</div>', unsafe_allow_html=True)
     
     col1, col2, col3, col4 = st.columns(4)
     if not data.empty:
@@ -427,12 +446,13 @@ def show_eda(data):
         st.plotly_chart(fig4, use_container_width=True)
 
 # ==========================================
-# 🔮 5. AI 수요 예측 & ℹ️ 프로젝트 정보 라우터 (기존과 동일)
+# 🔮 5. AI 수요 예측 & ℹ️ 프로젝트 정보 라우터 (기상 연동 토글 이식)
 # ==========================================
 def show_prediction():
     st.header("🔮 따릉이 AI 미래 수요 예측 (LightGBM)")
     st.markdown("**최신 9개월의 롤링 트렌드**와 **실제 대여소 위치 좌표**, **기상 시뮬레이션**을 결합하여 정확한 대여 수요를 예측합니다.")
     col1, col2, col3 = st.columns(3)
+    
     with col1:
         st.subheader("🌍 대여소 및 일시 선택")
         station_list = station_meta['대여소명'].tolist()
@@ -441,28 +461,51 @@ def show_prediction():
         max_date = today_date + timedelta(days=365)
         pred_date = st.date_input("📅 날짜 선택", value=today_date, min_value=datetime(2024,1,1).date(), max_value=max_date)
         pred_hour = st.slider("⏰ 시간대 선택 (0-23시)", 0, 23, 18)
+        
     st_info = station_meta[station_meta['대여소명'] == selected_station].iloc[0]
     st_id_num = st_info['대여소_ID_num']
     subway_cnt = st_info['지하철역_수_1km']
     school_cnt = st_info['학교_수_1km']
-    lat = float(st_info['위度'] if '위度' in station_meta.columns else st_info['위도'])
+    lat = float(st_info['위도'] if '위도' in station_meta.columns else st_info['위도'])
     lng = float(st_info['경도'])
+    
     with col2:
         st.subheader("🌤️ 기상 조건 설정")
-        temperature = st.number_input("기온 (°C)", value=22.0)
-        rainfall = st.number_input("강수량 (mm)", value=0.0)
-        windspeed = st.number_input("풍속 (m/s)", value=2.0)
-        humidity = st.number_input("습도 (%)", value=60.0)
+        
+        # 💡 [새로 이식된 기능] 기상 실시간 연동 체크박스 토글
+        use_realtime_weather = st.checkbox("☑️ 현재 서울 실시간 날씨 연동", value=True)
+
+        if use_realtime_weather:
+            weather_data, w_status = get_seoul_weather()
+            if weather_data:
+                st.success("✅ **자동 호출 완료**")
+                def_temp = weather_data['기온']
+                def_hum = weather_data['습도']
+                def_rain = weather_data['강수량']
+                def_wind = weather_data['풍속']
+            else:
+                st.warning("⚠️ 날씨 호출 실패. 기본값 적용")
+                def_temp, def_hum, def_rain, def_wind = 22.0, 60.0, 0.0, 2.0
+        else:
+            def_temp, def_hum, def_rain, def_wind = 22.0, 60.0, 0.0, 2.0
+            
+        temperature = st.number_input("기온 (°C)", value=float(def_temp))
+        rainfall = st.number_input("강수량 (mm)", value=float(def_rain))
+        windspeed = st.number_input("풍속 (m/s)", value=float(def_wind))
+        humidity = st.number_input("습도 (%)", value=float(def_hum))
+        
     with col3:
         st.subheader("🗺️ 대여소 인프라 정보")
         st.info(f"**{selected_station}**\n\n- 내부 관리 ID: {st_id_num}\n- 실제 위도: {lat:.4f}\n- 실제 경도: {lng:.4f}\n- 주변 1km 지하철역: {subway_cnt}개\n- 주변 1km 학교: {school_cnt}개")
+        
     st.divider()
     m = folium.Map(location=[lat, lng], zoom_start=16)
     folium.Marker([lat, lng], popup=selected_station, icon=folium.Icon(color='blue', icon='bicycle', prefix='fa')).add_to(m)
     folium.Circle([lat, lng], radius=1000, color="blue", fill=True, fill_opacity=0.05).add_to(m)
     st_folium(m, width="100%", height=350, returned_objects=[])
+    
     st.divider()
-    if st.button("🚀 인공지능 수요 예측 실행", use_container_width=True):
+    if st.button("🚀수요 예측 실행", use_container_width=True):
         pred_date_dt = pd.Timestamp(pred_date)
         weekday_idx = pred_date_dt.dayofweek
         is_weekend_val = 1 if weekday_idx >= 5 else 0
