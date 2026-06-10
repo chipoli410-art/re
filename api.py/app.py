@@ -87,7 +87,7 @@ def get_realtime_bike_status():
         return None, "API 응답 실패 또는 데이터가 없습니다."
 
     df = pd.DataFrame(all_rows)
-    df['API_대여소명'] = df['stationName'] # 💡 원본 이름 보존
+    df['API_대여소명'] = df['stationName'] 
     df['대여소명'] = df['stationName'].apply(lambda x: x.split('.')[-1].strip() if '.' in str(x) else str(x).strip())
     df['실시간_자전거_수'] = df['parkingBikeTotCnt'].astype(int)
     df['위도'] = df['stationLatitude'].astype(float)
@@ -95,22 +95,25 @@ def get_realtime_bike_status():
     
     return df, "성공"
 
-# 💡 [신규 추가] 오픈 기상 API 연동 함수
 @st.cache_data(ttl=600)
-def get_seoul_weather():
-    """Open-Meteo API를 사용해 서울의 현재 기상 정보를 가져옵니다."""
-    url = "https://api.open-meteo.com/v1/forecast?latitude=37.5665&longitude=126.9780&current=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m&timezone=Asia%2FTokyo"
+def get_forecast_weather(target_date_str, target_hour):
+    """Open-Meteo API를 사용해 특정 날짜와 시간의 서울 기상 예보를 가져옵니다."""
+    url = f"https://api.open-meteo.com/v1/forecast?latitude=37.5665&longitude=126.9780&hourly=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m&timezone=Asia%2FTokyo&start_date={target_date_str}&end_date={target_date_str}"
     try:
         res = requests.get(url, timeout=5)
         if res.status_code == 200:
-            data = res.json()['current']
-            return {
-                '기온': float(data['temperature_2m']),
-                '습도': float(data['relative_humidity_2m']),
-                '강수량': float(data['precipitation']),
-                '풍속': float(data['wind_speed_10m'])
-            }, "성공"
-        return None, f"API 오류"
+            data = res.json()
+            target_time_str = f"{target_date_str}T{target_hour:02d}:00"
+            if 'hourly' in data and 'time' in data['hourly'] and target_time_str in data['hourly']['time']:
+                idx = data['hourly']['time'].index(target_time_str)
+                return {
+                    '기온': float(data['hourly']['temperature_2m'][idx]),
+                    '습도': float(data['hourly']['relative_humidity_2m'][idx]),
+                    '강수량': float(data['hourly']['precipitation'][idx]),
+                    '풍속': float(data['hourly']['wind_speed_10m'][idx])
+                }, "성공"
+            return None, "해당 시간의 예보 데이터 없음"
+        return None, f"단기 예보 기간 초과"
     except Exception:
         return None, f"연결 실패"
 
@@ -136,12 +139,11 @@ def main():
     data = load_and_adapt_data()
 
     with st.sidebar:
-        # 타이틀에서 AI 제거
-        st.markdown("<h2 style='text-align: center; color: #78c2ff;'>🚲 따릉이 수요예측 시스템</h2>", unsafe_allow_html=True)
+        # 💡 "따릉이 수요 예측"으로 문구 수정
+        st.markdown("<h2 style='text-align: center; color: #78c2ff;'>🚲 따릉이 수요 예측</h2>", unsafe_allow_html=True)
         st.markdown("<p style='text-align: center; color: #FFFFFF; font-size: 14px; opacity: 0.8;'>수요 예측 대시보드</p>", unsafe_allow_html=True)
         st.divider()
 
-        # 메뉴 옵션에서 AI 제거
         page = option_menu(
             menu_title=None, 
             options=["홈 (레이더)", "EDA 분석 대시보드", "수요 예측 조회", "프로젝트 정보"],
@@ -155,17 +157,17 @@ def main():
             }
         )
 
-    # 라우팅 명칭 변경
     if page == "홈 (레이더)": show_home(data)
     elif page == "EDA 분석 대시보드": show_eda(data)
     elif page == "수요 예측 조회": show_prediction()
     elif page == "프로젝트 정보": show_project_info()
 
 # ==========================================
-# 🏠 3. 홈 화면 (검색창 GPS 매칭 & 명칭 정제 통합 완성본)
+# 🏠 3. 홈 화면 
 # ==========================================
 def show_home(data):
-    st.markdown('<div class="main-header">🚲 서울시 따릉이 수요예측 대시보드</div>', unsafe_allow_html=True)
+    # 💡 "따릉이 수요 예측 대시보드"로 문구 수정
+    st.markdown('<div class="main-header">🚲 따릉이 수요 예측 대시보드</div>', unsafe_allow_html=True)
     
     col1, col2, col3, col4 = st.columns(4)
     if not data.empty:
@@ -196,23 +198,19 @@ def show_home(data):
     st.subheader("🚨 지능형 수요 예측 및 대체 대여소 추천 레이더")
     st.markdown(f"**현재 시간 ({now.strftime('%Y-%m-%d %H:%M')})** 기준 진단판입니다. 검색창에 **대여소 이름을 입력하여 검색**하신 후 확인 버튼을 눌러주세요.")
 
-    # 💡 [통일된 정제 함수] 마침표 기준 뒤쪽 이름 추출
     def clean_station_name(name_str):
         name_str = str(name_str)
         return name_str.split('.')[-1].strip() if '.' in name_str else name_str.strip()
 
-    # 실시간 데이터 넘파이 배열화 (고속 연산용)
     rt_names = realtime_df['대여소명'].values
     rt_api_raw = realtime_df['API_대여소명'].values if 'API_대여소명' in realtime_df.columns else rt_names
     rt_lats = realtime_df['위도'].values
     rt_lngs = realtime_df['경도'].values
     rt_bikes = realtime_df['실시간_자전거_수'].values
 
-    # 1. 텍스트 일치 우선 매핑
     rt_stock_dict = dict(zip(rt_names, rt_bikes))
     rt_clean_name_dict = dict(zip(rt_names, [clean_station_name(x) for x in rt_api_raw]))
 
-    # 2. 검색창 목록을 위해 3000개 대여소 전체 사전 GPS 매핑
     display_name_dict = {}
     for _, row in station_meta.iterrows():
         meta_name = row['대여소명']
@@ -235,7 +233,6 @@ def show_home(data):
     try: default_idx = station_list.index(st.session_state.temp_selection)
     except: default_idx = 0
 
-    # 💡 GPS 기반 매핑된 딕셔너리를 드롭다운에 적용
     input_station = st.selectbox(
         "📍 조회할 목적지 검색 (클릭 후 키보드로 텍스트 입력)", 
         station_list, 
@@ -244,7 +241,6 @@ def show_home(data):
     )
     st.session_state.temp_selection = input_station 
 
-    # --- AI 수요 예측 연산부 ---
     target_meta = station_meta[station_meta['대여소명'] == st.session_state.selected_station].iloc[0]
     t_lat = float(target_meta['위도'])
     t_lon = float(target_meta['경도'])
@@ -263,7 +259,6 @@ def show_home(data):
     
     predicted_demand = int(np.maximum(0, np.round(lgb_model.predict(single_input)[0])))
 
-    # --- 실시간 재고 탐색 ---
     rt_info = realtime_df[realtime_df['대여소명'] == st.session_state.selected_station]
     target_api_name = None
     
@@ -326,34 +321,28 @@ def show_home(data):
 
     st.divider()
 
-    st.button("🔍 선택 대여소 진단 및 예측 실행", type="primary", on_click=commit_station)
+    # 💡 "수요 예측 실행"으로 문구 수정
+    st.button("🔍 선택 대여소 진단 및 수요 예측 실행", type="primary", on_click=commit_station)
     
     st.subheader(f"🗺️ 대여소 현황 및 레이더 동기화 지도")
     
     m_master = folium.Map(location=[t_lat, t_lon], zoom_start=15, tiles="OpenStreetMap")
     marker_cluster = MarkerCluster().add_to(m_master)
     
-    # 💡 [핵심 복구] 지도 마커 생성 전, 전체 대여소에 대해 AI 수요 예측값을 갱신합니다.
-    # 예측을 위한 입력 데이터 준비
     batch_inputs = pd.DataFrame({
         '대여소_ID_num': station_meta['대여소_ID_num'], '요일': weekday, '대여시간(시)': hour, '주말_여부': is_weekend,
         '기온': 22.0, '강수량': 0.0, '풍속': 2.0, '습도': 60.0, '비옴_여부': 0,
         '지하철역_수_1km': station_meta['지하철역_수_1km'], '학교_수_1km': station_meta['학교_수_1km']
     })
-    # 과거 평균 매칭
     current_prof = profile_db[(profile_db['요일'] == weekday) & (profile_db['대여시간(시)'] == hour)]
     batch_inputs = pd.merge(batch_inputs, current_prof[['대여소_ID_num', '과거_평균_대여량']], on='대여소_ID_num', how='left')
     batch_inputs['과거_평균_대여량'] = batch_inputs['과거_평균_대여량'].fillna(global_mean)
     
-    # 컬럼 순서 고정 및 타입 지정
     ordered_cols = ['대여소_ID_num', '요일', '대여시간(시)', '주말_여부', '기온', '강수량', '풍속', '습도', '비옴_여부', '과거_평균_대여량', '지하철역_수_1km', '학교_수_1km']
     batch_inputs = batch_inputs[ordered_cols]
     for col in cat_cols: batch_inputs[col] = batch_inputs[col].astype('category')
         
-    # AI 예측 수행 후 station_meta에 반영
     station_meta['현재예측수요'] = np.maximum(0, np.round(lgb_model.predict(batch_inputs))).astype(int)
-
-    # 이제 아래에서 station_meta['현재예측수요']를 안전하게 읽을 수 있습니다.
 
     for _, row in station_meta.iterrows():
         lat_val = float(row['위도'])
@@ -371,10 +360,7 @@ def show_home(data):
                 
         bike_text = f"<span style='color:#2ca02c; font-weight:bold;'>{int(live_bikes)}대</span>" if live_bikes is not None else "<span style='color:gray; font-weight:bold;'>미운영</span>"
         
-        # 💡 [핵심 수정 3] 지도 팝업창 타이틀에도 결합된 이름 적용
         display_map_name = f"{api_raw_name} ({row['대여소명']})" if api_raw_name and api_raw_name != row['대여소명'] else row['대여소명']
-        
-        # 💡 [누락 복구] 각 대여소별 예측 대여량 텍스트 포맷 구성
         predict_text = f"<span style='color:#1f77b4; font-weight:bold;'>{int(row['현재예측수요'])}대</span>"
         
         popup_html = f"""
@@ -398,7 +384,7 @@ def show_home(data):
     st_folium(m_master, width="100%", height=600, key="master_map", returned_objects=[])
     
 # ==========================================
-# 📊 4. EDA 분석 페이지 (기존과 동일)
+# 📊 4. EDA 분석 페이지
 # ==========================================
 def show_eda(data):
     if data.empty:
@@ -446,15 +432,16 @@ def show_eda(data):
         st.plotly_chart(fig4, use_container_width=True)
 
 # ==========================================
-# 🔮 5. AI 수요 예측 & ℹ️ 프로젝트 정보 라우터 (기상 연동 토글 이식)
+# 🔮 5. AI 수요 예측 라우터
 # ==========================================
 def show_prediction():
-    st.header("🔮 따릉이 AI 미래 수요 예측 (LightGBM)")
-    st.markdown("**최신 9개월의 롤링 트렌드**와 **실제 대여소 위치 좌표**, **기상 시뮬레이션**을 결합하여 정확한 대여 수요를 예측합니다.")
+    # 💡 "미래 수요 예측" 타이틀의 'AI' 문구 제거 
+    st.header("🔮 따릉이 미래 수요 예측 (LightGBM)")
+    st.markdown("**최신 9개월의 롤링 트렌드**와 **실제 대여소 위치 좌표**, **기상 예보 시뮬레이션**을 결합하여 정확한 대여 수요를 예측합니다.")
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.subheader("🌍 대여소 및 일시 선택")
+        st.subheader("🌍 1. 장소 및 일시 선택")
         station_list = station_meta['대여소명'].tolist()
         selected_station = st.selectbox("📍 예측할 대여소를 선택하세요", station_list)
         today_date = datetime.now().date()
@@ -470,21 +457,21 @@ def show_prediction():
     lng = float(st_info['경도'])
     
     with col2:
-        st.subheader("🌤️ 기상 조건 설정")
+        st.subheader("🌤️ 2. 기상 조건 자동 연동")
+        target_date_str = pred_date.strftime("%Y-%m-%d")
         
-        # 💡 [새로 이식된 기능] 기상 실시간 연동 체크박스 토글
-        use_realtime_weather = st.checkbox("☑️ 현재 서울 실시간 날씨 연동", value=True)
+        use_forecast_weather = st.checkbox(f"☑️ {target_date_str} {pred_hour}시 예보 자동 연동", value=True)
 
-        if use_realtime_weather:
-            weather_data, w_status = get_seoul_weather()
+        if use_forecast_weather:
+            weather_data, w_status = get_forecast_weather(target_date_str, pred_hour)
             if weather_data:
-                st.success("✅ **자동 호출 완료**")
+                st.success(f"✅ **해당 시간 기상 예보 로드 완료**")
                 def_temp = weather_data['기온']
                 def_hum = weather_data['습도']
                 def_rain = weather_data['강수량']
                 def_wind = weather_data['풍속']
             else:
-                st.warning("⚠️ 날씨 호출 실패. 기본값 적용")
+                st.warning(f"⚠️ 단기 예보 기간이 아닙니다. (기본값 적용)")
                 def_temp, def_hum, def_rain, def_wind = 22.0, 60.0, 0.0, 2.0
         else:
             def_temp, def_hum, def_rain, def_wind = 22.0, 60.0, 0.0, 2.0
@@ -495,7 +482,7 @@ def show_prediction():
         humidity = st.number_input("습도 (%)", value=float(def_hum))
         
     with col3:
-        st.subheader("🗺️ 대여소 인프라 정보")
+        st.subheader("🗺️ 3. 대여소 인프라 정보")
         st.info(f"**{selected_station}**\n\n- 내부 관리 ID: {st_id_num}\n- 실제 위도: {lat:.4f}\n- 실제 경도: {lng:.4f}\n- 주변 1km 지하철역: {subway_cnt}개\n- 주변 1km 학교: {school_cnt}개")
         
     st.divider()
@@ -505,7 +492,8 @@ def show_prediction():
     st_folium(m, width="100%", height=350, returned_objects=[])
     
     st.divider()
-    if st.button("🚀수요 예측 실행", use_container_width=True):
+    # 💡 "수요 예측 실행"으로 문구 수정
+    if st.button("🚀 수요 예측 실행", use_container_width=True):
         pred_date_dt = pd.Timestamp(pred_date)
         weekday_idx = pred_date_dt.dayofweek
         is_weekend_val = 1 if weekday_idx >= 5 else 0
@@ -515,7 +503,7 @@ def show_prediction():
         for col in cat_cols: input_data[col] = input_data[col].astype('category')
         raw_pred = lgb_model.predict(input_data)[0]
         final_prediction = max(0, int(round(raw_pred)))
-        st.subheader("📊 AI 예측 결과")
+        st.subheader("📊 예측 결과")
         c1, c2, c3 = st.columns(3)
         with c1: st.metric("✨ 예상 대여량", f"{final_prediction} 대")
         with c2: st.metric("🕰️ 과거 동시간대 평균", f"{past_mean:.1f} 대")
