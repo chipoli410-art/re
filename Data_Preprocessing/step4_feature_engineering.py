@@ -1,4 +1,3 @@
-# step4_unified_feature_engineering.py
 import pandas as pd
 
 print("1. 2024년과 2025년의 Step 3(날씨/공간 병합 완료) 데이터를 불러옵니다...")

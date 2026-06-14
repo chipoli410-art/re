@@ -1,4 +1,3 @@
-# step2_weather_merge.py
 import pandas as pd
 import requests
 import json

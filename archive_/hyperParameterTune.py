@@ -10,7 +10,7 @@ import numpy as np
 # ==========================================
 print("마스터 데이터셋을 불러오는 중입니다... (시간이 조금 걸릴 수 있습니다)")
 # 본인의 실제 마스터 파일명으로 변경해주세요 (예: '마스터데이터.csv')
-df = pd.read_csv('step4_final_ml_ready.csv') 
+df = pd.read_csv('step4_final_ml_ready_25.csv') 
 
 # ==========================================
 # 1. 튜닝용 데이터 샘플링 및 분리
@@ -74,7 +74,7 @@ study = optuna.create_study(direction='minimize')
 study.optimize(objective, n_trials=30) # 30번 탐색
 
 print("\n==================================")
-print("🏆 튜닝 완료! 최적의 파라미터 🏆")
+print("최적 파라미터")
 print(study.best_params)
 print(f"Best RMSE: {study.best_value:.4f}")
 print("==================================")

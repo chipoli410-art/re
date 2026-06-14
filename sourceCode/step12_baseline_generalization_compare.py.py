@@ -1,4 +1,3 @@
-# step12_baseline_generalization_compare.py
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
@@ -10,8 +9,8 @@ import warnings
 warnings.filterwarnings('ignore')
 
 print("1. 24년(학습) 및 25년(테스트) 데이터를 로드합니다...")
-train_df = pd.read_csv('step4_final_ml_ready_test.csv') 
-test_df = pd.read_csv('step4_final_ml_ready.csv')
+train_df = pd.read_csv('step4_final_ml_ready_24.csv') 
+test_df = pd.read_csv('step4_final_ml_ready_25.csv')
 
 print("2. 과거 패턴(과거 평균 대여량) 매핑 중 (오직 24년 기준)...")
 profile_df = train_df.groupby(['대여소_ID_num', '요일', '대여시간(시)'])['총_대여건수(Y)'].mean().reset_index()

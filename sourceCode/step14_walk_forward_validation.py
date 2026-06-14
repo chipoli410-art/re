@@ -1,4 +1,3 @@
-# step14_walk_forward_validation.py
 import pandas as pd
 import numpy as np
 import lightgbm as lgb
@@ -8,8 +7,8 @@ import warnings
 warnings.filterwarnings('ignore')
 
 print("1. 24년, 25년 클린 데이터를 로드하여 시계열을 병합합니다...")
-train_full = pd.read_csv('step4_final_ml_ready.csv') 
-test_full = pd.read_csv('step4_final_ml_ready_test.csv')
+train_full = pd.read_csv('step4_final_ml_ready_25.csv') 
+test_full = pd.read_csv('step4_final_ml_ready_26.csv')
 
 df_all = pd.concat([train_full, test_full], ignore_index=True)
 

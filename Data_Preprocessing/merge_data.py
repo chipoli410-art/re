@@ -10,7 +10,7 @@ file_list = [
     'step4_final_ml_ready_26.csv'   # 26년도 파일 (예시)
 ]
 
-# 추출할 9개월 타겟 날짜 (YYYYMMDD 형식)
+# 실제 예측모델에 적용할 학습 기간
 start_date = 20250901
 end_date = 20260531
 
@@ -20,7 +20,7 @@ print("-" * 50)
 merged_chunks = []
 
 # ==========================================
-# 🔄 2. 파일 순회 및 조건부 필터링 (ETL 과정)
+# 🔄 2. 파일 순회 및 조건부 필터링 
 # ==========================================
 for file_name in file_list:
     if os.path.exists(file_name):

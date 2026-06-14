@@ -36,7 +36,7 @@ def run_monthly_local_retraining(execution_year, execution_month):
         print("❌ 경고: 해당 기간에 알맞은 데이터가 로컬 파일에 없습니다.")
         return
         
-    # 3. 최신 9개월 기준 '과거 평균 대여량(치트키)' 프로필 생성
+    # 3. 최신 9개월 기준 '과거 평균 대여량' 프로필 생성
     profile_df = train_df.groupby(['대여소_ID_num', '요일', '대여시간(시)'])['총_대여건수(Y)'].mean().reset_index()
     profile_df.rename(columns={'총_대여건수(Y)': '과거_평균_대여량'}, inplace=True)
     
@@ -68,7 +68,7 @@ def run_monthly_local_retraining(execution_year, execution_month):
     model = lgb.LGBMRegressor(**golden_params)
     model.fit(X_train, y_train, categorical_feature=cat_cols)
     
-    # 6. 💾 모델 및 치트키 파일 저장
+    # 6. 💾 모델 및 과거 평균 대여량 파일 저장
     joblib.dump(model, 'ttareungi_model_v1.pkl')
     profile_df.to_csv('rolling_profile_9m.csv', index=False)
     

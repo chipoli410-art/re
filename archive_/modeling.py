@@ -13,7 +13,7 @@ warnings.filterwarnings('ignore')
 # 1. Step 4 전처리 완료된 마스터 데이터 로드
 print("1. Step 4 최종 마스터 데이터를 불러오는 중...")
 # 전처리 파일명이 다를 경우 실제 파일명으로 수정해 주세요.
-df = pd.read_csv('step4_final_ml_ready.csv') 
+df = pd.read_csv('step4_final_ml_ready_25.csv') 
 
 # 2. 데이터 분할 (시간순 80:20 분할)
 print("2. 데이터를 학습용(Train)과 평가용(Test)으로 분할합니다...")

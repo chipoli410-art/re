@@ -1,4 +1,3 @@
-# step8_ultimate_stacking.py
 import pandas as pd
 import numpy as np
 import lightgbm as lgb
@@ -12,7 +11,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 print("1. 데이터를 준비하고 과거 패턴을 결합합니다...")
-df = pd.read_csv('step4_final_ml_ready.csv') 
+df = pd.read_csv('step4_final_ml_ready_25.csv') 
 df = df.sort_values(by=['대여일자', '대여시간(시)']).reset_index(drop=True)
 split_index = int(len(df) * 0.8)
 

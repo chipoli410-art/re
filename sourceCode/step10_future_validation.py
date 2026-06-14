@@ -10,9 +10,9 @@ warnings.filterwarnings('ignore')
 # 1. 시계열 순서에 맞는 데이터 로드
 # ==========================================
 print("1. 과거(2024년) 학습 데이터와 미래(2025년) 테스트 데이터를 불러옵니다...")
-# 파일명은 실제 저장하신 이름으로 변경해 주세요!
-train_df = pd.read_csv('step4_final_ml_ready.csv') 
-test_df = pd.read_csv('step4_final_ml_ready_test.csv')
+
+train_df = pd.read_csv('step4_final_ml_ready_25.csv') 
+test_df = pd.read_csv('step4_final_ml_ready_26.csv')
 
 # ==========================================
 # 2. 미래 데이터 누수(Data Leakage) 완벽 차단 전처리

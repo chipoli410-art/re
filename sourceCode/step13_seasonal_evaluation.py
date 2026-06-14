@@ -1,4 +1,3 @@
-# step13_seasonal_evaluation.py
 import pandas as pd
 import numpy as np
 import lightgbm as lgb
@@ -8,8 +7,8 @@ import warnings
 warnings.filterwarnings('ignore')
 
 print("1. [정제 완료] 24년(학습) 및 25년(테스트) 데이터 로드 중...")
-train_df = pd.read_csv('step4_final_ml_ready.csv') 
-test_df = pd.read_csv('step4_final_ml_ready_test.csv')
+train_df = pd.read_csv('step4_final_ml_ready_24.csv') 
+test_df = pd.read_csv('step4_final_ml_ready_25.csv')
 
 print("2. 과거 패턴 매핑 (Data Leakage 완벽 차단)...")
 profile_df = train_df.groupby(['대여소_ID_num', '요일', '대여시간(시)'])['총_대여건수(Y)'].mean().reset_index()

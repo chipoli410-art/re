@@ -1,4 +1,3 @@
-# step1_bike_aggregation.py
 import pandas as pd
 import itertools
 import glob

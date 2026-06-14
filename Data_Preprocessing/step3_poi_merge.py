@@ -1,4 +1,3 @@
-# step3_poi_merge.py
 import pandas as pd
 import requests
 import time
